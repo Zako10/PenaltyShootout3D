@@ -22,9 +22,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
     [SerializeField] private Transform goalkeeper;
     [SerializeField] private Transform keeperHome;
     [SerializeField] private Transform aimMarker;
-    [SerializeField] private Transform leftPost;
-    [SerializeField] private Transform rightPost;
-    [SerializeField] private Transform crossbar;
     [SerializeField] private MovingObstacle[] obstacles;
 
     [Header("UI")]
@@ -35,7 +32,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
     [SerializeField] private Text timerText;
     [SerializeField] private Text messageText;
     [SerializeField] private Text gameOverText;
-    [SerializeField] private Slider powerSlider;
 
     [Header("Audio")]
     [SerializeField] private AudioSource audioSource;
@@ -47,13 +43,16 @@ public sealed class PenaltyGameManager : MonoBehaviour
     [Header("Easy Level")]
     [SerializeField] private float matchLength = 60f;
     [SerializeField] private float baseShotPower = 18f;
+    [SerializeField] private float playerRunSpeed = 5.2f;
+    [SerializeField] private float playerKickDistance = 0.75f;
     [SerializeField] private float keeperBaseSpeed = 2.2f;
+    [SerializeField] private float keeperEasyReactionDelay = 0.28f;
     [SerializeField] private float difficultyRampPerSecond = 0.025f;
+    [SerializeField] private bool startImmediately;
 
     private MatchState state = MatchState.Menu;
     private Vector2 aim = new Vector2(0f, 1.8f);
     private float timer;
-    private float shotPower01 = 0.65f;
     private float currentDifficulty;
     private int score;
     private int shots;
@@ -61,12 +60,22 @@ public sealed class PenaltyGameManager : MonoBehaviour
     private Vector3 keeperStartScale;
     private Vector3 playerStartScale;
     private Vector3 playerHomePosition;
-    private Vector3 ballHomePosition;
+    private Vector3 keeperDiveTarget;
+    private Vector3 lastBallPosition;
+    private Vector3 resolvedGoalPoint;
+    private Coroutine playerShotRoutine;
+    private float kickMoment;
+    private bool shotHasBeenKicked;
+    private bool obstacleTouchedShot;
 
-    private const float GoalLineZ = 10.4f;
+    private const float GoalLineZ = 10.15f;
     private const float GoalHalfWidth = 2.25f;
     private const float GoalHeight = 2.35f;
     private const float PlayerHalfRange = 2.05f;
+    private const int WinningScore = 10;
+    private const float BonusTargetX = 1.45f;
+    private const float BonusTargetY = 1.7f;
+    private const float BonusTargetHalfSize = 0.325f;
 
     private void Awake()
     {
@@ -77,13 +86,15 @@ public sealed class PenaltyGameManager : MonoBehaviour
         keeperStartScale = goalkeeper != null ? goalkeeper.localScale : Vector3.one;
         playerStartScale = player != null ? player.localScale : Vector3.one;
         playerHomePosition = player != null ? player.position : Vector3.zero;
-        ballHomePosition = ballStart != null ? ballStart.position : Vector3.zero;
-        if (player != null && ballStart != null)
+        EnsureBallCollisionReporter();
+        if (startImmediately)
         {
-            ballHomePosition = new Vector3(playerHomePosition.x, 0.35f, playerHomePosition.z + 2.75f);
-            ballStart.position = ballHomePosition;
+            StartEasyMatch();
         }
-        ShowMenu();
+        else
+        {
+            ShowMenu();
+        }
     }
 
     private void Update()
@@ -114,7 +125,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
         if (timer <= 0f)
         {
-            EndMatch();
+            EndMatch(score >= WinningScore);
             return;
         }
 
@@ -143,12 +154,11 @@ public sealed class PenaltyGameManager : MonoBehaviour
         score = 0;
         shots = 0;
         currentDifficulty = 0f;
-        shotPower01 = 0.65f;
         aim = new Vector2(0f, 1.8f);
         mainMenuPanel.SetActive(false);
         hudPanel.SetActive(true);
         gameOverPanel.SetActive(false);
-        messageText.text = "A/D move player. W/S aim height. Mouse aims. Click or Space shoots.";
+        messageText.text = "Reach 10 points. Normal goal +1, highlighted target +2, miss -1.";
         PlayClip(whistleClip);
         ResetShot();
         UpdateHud();
@@ -178,37 +188,22 @@ public sealed class PenaltyGameManager : MonoBehaviour
         if (Mathf.Abs(horizontal) > 0.01f || Mathf.Abs(vertical) > 0.01f)
         {
             MovePlayer(horizontal);
-            aim.x = player != null ? player.position.x : aim.x;
             aim.y += vertical * Time.deltaTime * 1.4f;
         }
         else
         {
             Vector3 mouse = ReadMousePosition();
-            aim.x = Mathf.Lerp(-GoalHalfWidth, GoalHalfWidth, Mathf.Clamp01(mouse.x / Screen.width));
             aim.y = Mathf.Lerp(0.55f, GoalHeight, Mathf.Clamp01(mouse.y / Screen.height));
         }
 
-        if (IsPowerUpHeld())
-        {
-            shotPower01 += Time.deltaTime * 0.55f;
-        }
-        else if (IsPowerDownHeld())
-        {
-            shotPower01 -= Time.deltaTime * 0.55f;
-        }
+        aim.x = player != null ? player.position.x : aim.x;
 
         aim.x = Mathf.Clamp(aim.x, -GoalHalfWidth, GoalHalfWidth);
         aim.y = Mathf.Clamp(aim.y, 0.45f, GoalHeight);
-        shotPower01 = Mathf.Clamp01(shotPower01);
 
         if (aimMarker != null)
         {
             aimMarker.position = new Vector3(aim.x, aim.y, GoalLineZ - 0.18f);
-        }
-
-        if (powerSlider != null)
-        {
-            powerSlider.value = shotPower01;
         }
     }
 
@@ -222,28 +217,73 @@ public sealed class PenaltyGameManager : MonoBehaviour
         Vector3 position = player.position;
         position.x = Mathf.Clamp(position.x + horizontal * Time.deltaTime * 3.4f, -PlayerHalfRange, PlayerHalfRange);
         player.position = position;
-
-        if (ball != null && ball.isKinematic)
-        {
-            ball.transform.position = new Vector3(position.x, ballHomePosition.y, ballHomePosition.z);
-        }
     }
 
     private void Shoot()
     {
         state = MatchState.ResolvingShot;
         shotResolved = false;
+        shotHasBeenKicked = false;
+        obstacleTouchedShot = false;
         shots++;
         messageText.text = string.Empty;
+
+        if (playerShotRoutine != null)
+        {
+            StopCoroutine(playerShotRoutine);
+        }
+
+        playerShotRoutine = StartCoroutine(RunPlayerToBallAndKick());
+    }
+
+    private IEnumerator RunPlayerToBallAndKick()
+    {
+        if (player == null || ball == null)
+        {
+            KickBallNow();
+            yield break;
+        }
+
+        Vector3 kickSpot = ball.position + Vector3.back * playerKickDistance;
+        kickSpot.y = playerHomePosition.y;
+
+        while (Vector3.Distance(Flatten(player.position), Flatten(kickSpot)) > 0.06f)
+        {
+            Vector3 direction = kickSpot - player.position;
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude > 0.001f)
+            {
+                player.rotation = Quaternion.Slerp(player.rotation, Quaternion.LookRotation(direction.normalized), Time.deltaTime * 14f);
+                player.position = Vector3.MoveTowards(player.position, kickSpot, playerRunSpeed * Time.deltaTime);
+            }
+
+            yield return null;
+        }
+
+        KickBallNow();
+        playerShotRoutine = null;
+    }
+
+    private void KickBallNow()
+    {
+        if (ball == null)
+        {
+            return;
+        }
 
         Vector3 target = new Vector3(aim.x, aim.y, GoalLineZ);
         Vector3 direction = (target - ball.position).normalized;
         ball.isKinematic = false;
-        ball.velocity = Vector3.zero;
+        ball.linearVelocity = Vector3.zero;
         ball.angularVelocity = Vector3.zero;
-        ball.AddForce(direction * (baseShotPower + shotPower01 * 8f), ForceMode.Impulse);
+        ball.AddForce(direction * baseShotPower, ForceMode.Impulse);
         ball.AddTorque(new Vector3(Random.Range(2f, 5f), Random.Range(-3f, 3f), -6f), ForceMode.Impulse);
 
+        shotHasBeenKicked = true;
+        kickMoment = Time.time;
+        lastBallPosition = ball.position;
+        PrepareKeeperDiveTarget();
         StartCoroutine(KickAnimation());
         PlayClip(kickClip);
     }
@@ -264,51 +304,44 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private void UpdateKeeperDive()
     {
-        if (goalkeeper == null)
+        if (goalkeeper == null || keeperHome == null || !shotHasBeenKicked)
         {
             return;
         }
 
-        float reactionError = Mathf.Lerp(1.15f, 0.35f, Mathf.Clamp01(currentDifficulty));
-        float targetX = aim.x + Random.Range(-reactionError, reactionError);
-        Vector3 target = new Vector3(
-            Mathf.Clamp(targetX, -GoalHalfWidth + 0.25f, GoalHalfWidth - 0.25f),
-            keeperHome.position.y,
-            keeperHome.position.z);
+        if (Time.time < kickMoment + keeperEasyReactionDelay)
+        {
+            return;
+        }
 
-        float speed = keeperBaseSpeed + currentDifficulty * 1.8f;
-        goalkeeper.position = Vector3.MoveTowards(goalkeeper.position, target, speed * Time.deltaTime);
-        float lean = Mathf.Clamp((target.x - goalkeeper.position.x) * -20f, -55f, 55f);
+        float speed = keeperBaseSpeed + currentDifficulty * 0.8f;
+        goalkeeper.position = Vector3.MoveTowards(goalkeeper.position, keeperDiveTarget, speed * Time.deltaTime);
+        float lean = Mathf.Clamp((keeperDiveTarget.x - goalkeeper.position.x) * -20f, -55f, 55f);
         goalkeeper.rotation = Quaternion.Lerp(goalkeeper.rotation, Quaternion.Euler(0f, 180f, lean), Time.deltaTime * 8f);
     }
 
     private void CheckShotResult()
     {
-        if (shotResolved || ball == null)
+        if (shotResolved || ball == null || !shotHasBeenKicked)
         {
             return;
         }
 
-        bool crossedGoalLine = ball.position.z >= GoalLineZ;
-        bool insideGoal = Mathf.Abs(ball.position.x) <= GoalHalfWidth && ball.position.y >= 0.35f && ball.position.y <= GoalHeight;
-        bool keeperReachedBall = Vector3.Distance(ball.position, goalkeeper.position + Vector3.up * 1.1f) < 0.85f && ball.position.z > 7f;
-        bool expired = ball.position.z > GoalLineZ + 2.5f || ball.position.y < -0.5f || ball.velocity.magnitude < 0.4f;
-
-        if (keeperReachedBall)
+        Vector3 currentBallPosition = ball.position;
+        if (TryGetGoalLineCrossing(lastBallPosition, currentBallPosition, out Vector3 goalPoint))
         {
-            ResolveShot(false, "Saved!");
+            resolvedGoalPoint = goalPoint;
+            bool insideGoal = IsInsideGoal(goalPoint);
+            ResolveShot(insideGoal, insideGoal && IsBonusTargetHit(goalPoint) ? "Highlighted target! +2" : insideGoal ? "Goal! +1" : "Missed! -1");
             return;
         }
 
-        if (crossedGoalLine)
-        {
-            ResolveShot(insideGoal, insideGoal ? "Goal!" : "Missed!");
-            return;
-        }
+        lastBallPosition = currentBallPosition;
 
+        bool expired = currentBallPosition.z > GoalLineZ + 2.5f || currentBallPosition.y < -0.5f || (Time.time >= kickMoment + 0.5f && ball.linearVelocity.magnitude < 0.35f);
         if (expired)
         {
-            ResolveShot(false, "No goal.");
+            ResolveShot(false, obstacleTouchedShot ? "Blocked! -1" : "No goal. -1");
         }
     }
 
@@ -317,18 +350,26 @@ public sealed class PenaltyGameManager : MonoBehaviour
         shotResolved = true;
         if (goal)
         {
-            score++;
+            score += IsBonusTargetHit(resolvedGoalPoint) ? 2 : 1;
             PlayClip(goalClip);
             StartCoroutine(CelebrationAnimation());
         }
         else
         {
+            score--;
             PlayClip(saveClip);
             StartCoroutine(LoseAnimation());
         }
 
         messageText.text = message;
         UpdateHud();
+
+        if (score >= WinningScore)
+        {
+            EndMatch(true);
+            return;
+        }
+
         StartCoroutine(ResetAfterDelay(1.15f));
     }
 
@@ -344,14 +385,23 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private void ResetShot()
     {
+        if (playerShotRoutine != null)
+        {
+            StopCoroutine(playerShotRoutine);
+            playerShotRoutine = null;
+        }
+
+        shotHasBeenKicked = false;
+
         if (ball == null || ballStart == null)
         {
             return;
         }
 
-        ball.isKinematic = true;
-        ball.velocity = Vector3.zero;
+        ball.isKinematic = false;
+        ball.linearVelocity = Vector3.zero;
         ball.angularVelocity = Vector3.zero;
+        ball.isKinematic = true;
         ball.transform.SetPositionAndRotation(ballStart.position, ballStart.rotation);
 
         if (goalkeeper != null && keeperHome != null)
@@ -368,18 +418,44 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
     }
 
-    private void EndMatch()
+    private void PrepareKeeperDiveTarget()
+    {
+        if (keeperHome == null)
+        {
+            keeperDiveTarget = goalkeeper != null ? goalkeeper.position : Vector3.zero;
+            return;
+        }
+
+        float reactionError = Mathf.Lerp(1.45f, 0.75f, Mathf.Clamp01(currentDifficulty));
+        float targetX = aim.x + Random.Range(-reactionError, reactionError);
+        if (Random.value < 0.18f)
+        {
+            targetX *= -0.65f;
+        }
+
+        keeperDiveTarget = new Vector3(
+            Mathf.Clamp(targetX, -GoalHalfWidth + 0.25f, GoalHalfWidth - 0.25f),
+            keeperHome.position.y,
+            keeperHome.position.z);
+    }
+
+    private static Vector3 Flatten(Vector3 value)
+    {
+        return new Vector3(value.x, 0f, value.z);
+    }
+
+    private void EndMatch(bool won = false)
     {
         state = MatchState.GameOver;
         hudPanel.SetActive(false);
         gameOverPanel.SetActive(true);
-        gameOverText.text = "Game Over\nScore: " + score + "\nShots: " + shots;
+        gameOverText.text = won ? "You Win!\nPoints: " + score + "\nShots: " + shots : "You Lose\nPoints: " + score + "\nShots: " + shots;
         PlayClip(whistleClip);
     }
 
     private void UpdateHud()
     {
-        scoreText.text = "Score: " + score;
+        scoreText.text = "Points: " + score + " / " + WinningScore;
         timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(0f, timer));
 
         foreach (MovingObstacle obstacle in obstacles)
@@ -389,6 +465,69 @@ public sealed class PenaltyGameManager : MonoBehaviour
                 obstacle.SetDifficulty(currentDifficulty);
             }
         }
+    }
+
+    private static bool IsBonusTargetHit(Vector3 point)
+    {
+        return Mathf.Abs(point.x - BonusTargetX) <= BonusTargetHalfSize && Mathf.Abs(point.y - BonusTargetY) <= BonusTargetHalfSize;
+    }
+
+    private static bool IsInsideGoal(Vector3 point)
+    {
+        return Mathf.Abs(point.x) <= GoalHalfWidth && point.y >= 0.15f && point.y <= GoalHeight;
+    }
+
+    private static bool TryGetGoalLineCrossing(Vector3 from, Vector3 to, out Vector3 crossing)
+    {
+        crossing = default;
+        if (from.z >= GoalLineZ || to.z < GoalLineZ)
+        {
+            return false;
+        }
+
+        float t = Mathf.InverseLerp(from.z, to.z, GoalLineZ);
+        crossing = Vector3.Lerp(from, to, t);
+        return true;
+    }
+
+    private void EnsureBallCollisionReporter()
+    {
+        if (ball == null)
+        {
+            return;
+        }
+
+        PenaltyShotCollisionReporter reporter = ball.GetComponent<PenaltyShotCollisionReporter>();
+        if (reporter == null)
+        {
+            reporter = ball.gameObject.AddComponent<PenaltyShotCollisionReporter>();
+        }
+
+        reporter.Configure(this);
+    }
+
+    internal void NotifyShotCollision(Collider other)
+    {
+        if (shotResolved || !shotHasBeenKicked || other == null || ball == null || ball.position.z >= GoalLineZ)
+        {
+            return;
+        }
+
+        if (IsGoalkeeperCollider(other))
+        {
+            ResolveShot(false, "Saved! -1");
+            return;
+        }
+
+        if (other.GetComponentInParent<MovingObstacle>() != null)
+        {
+            obstacleTouchedShot = true;
+        }
+    }
+
+    private bool IsGoalkeeperCollider(Collider other)
+    {
+        return goalkeeper != null && (other.transform == goalkeeper || other.transform.IsChildOf(goalkeeper));
     }
 
     private void AnimatePlayerReady()
@@ -480,26 +619,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
         pressed |= mouse != null && mouse.leftButton.wasPressedThisFrame;
 #endif
         return pressed;
-    }
-
-    private static bool IsPowerUpHeld()
-    {
-        bool held = Input.GetKey(KeyCode.LeftShift);
-#if ENABLE_INPUT_SYSTEM
-        Keyboard keyboard = Keyboard.current;
-        held |= keyboard != null && (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed);
-#endif
-        return held;
-    }
-
-    private static bool IsPowerDownHeld()
-    {
-        bool held = Input.GetKey(KeyCode.LeftControl);
-#if ENABLE_INPUT_SYSTEM
-        Keyboard keyboard = Keyboard.current;
-        held |= keyboard != null && (keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed);
-#endif
-        return held;
     }
 
     private static Vector3 ReadMousePosition()
@@ -606,5 +725,25 @@ public sealed class PenaltyGameManager : MonoBehaviour
         AudioClip clip = AudioClip.Create(clipName, sampleCount, 1, sampleRate, false);
         clip.SetData(samples, 0);
         return clip;
+    }
+}
+
+public sealed class PenaltyShotCollisionReporter : MonoBehaviour
+{
+    private PenaltyGameManager manager;
+
+    public void Configure(PenaltyGameManager owner)
+    {
+        manager = owner;
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        manager?.NotifyShotCollision(collision.collider);
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        manager?.NotifyShotCollision(other);
     }
 }

@@ -11,7 +11,7 @@ using UnityEngine.UI;
 [InitializeOnLoad]
 public static class EasyLevelAutoRepair
 {
-    private const string SessionKey = "PenaltyShootout.AutoRepairedEasyLevel";
+    private const string SessionKey = "PenaltyShootout.AutoRepairedEasyLevel.v2";
 
     static EasyLevelAutoRepair()
     {
@@ -39,35 +39,20 @@ public static class EasyLevelAutoRepair
 
 public static class EasyLevelSceneBuilder
 {
+    private const string StartMenuScenePath = "Assets/Scenes/StartMenu.unity";
     private const string ScenePath = "Assets/Scenes/Levels/EasyPenaltyShootout.unity";
     private const string CapturedScenePath = "Assets/Scenes/Levels/EasyPenaltyShootout_Captured.unity";
     private const string TribunePrefab = "Assets/Lightning Poly/Football Essentials 3D/Prefabs/Tribune.prefab";
     private const string ScoreboardPrefab = "Assets/Lightning Poly/Football Essentials 3D/Prefabs/Scoreboard.prefab";
     private const string StadiumPrefab = "Assets/Hayq Art/GrantStadium/Prefabs/Buildings/SM_Stadium.prefab";
 
-    [MenuItem("Tools/Penalty Shootout/Builder Window")]
-    public static void OpenBuilderWindow()
-    {
-        PenaltyBuilderWindow.ShowWindow();
-    }
-
-    [MenuItem("Tools/Penalty Shootout/Build Easy Level Scene")]
+    [MenuItem("Tools/Penalty Shootout/Build Scene", false, 2001)]
     public static void BuildEasyLevelScene()
     {
-        if (File.Exists(CapturedScenePath))
-        {
-            File.Copy(CapturedScenePath, ScenePath, true);
-            AssetDatabase.ImportAsset(ScenePath);
-            EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-            EnsureSceneInBuildSettings(ScenePath);
-            Debug.Log("Built Easy level from captured scene: " + ScenePath);
-            return;
-        }
-
         BuildDefaultEasyLevelScene();
+        BuildStartMenuScene();
     }
 
-    [MenuItem("Tools/Penalty Shootout/Rebuild Default Easy Level Scene")]
     public static void RebuildDefaultEasyLevelScene()
     {
         BuildDefaultEasyLevelScene();
@@ -98,7 +83,7 @@ public static class EasyLevelSceneBuilder
 
         CreateCameraAndLights(root.transform);
         CreateEnvironment(environment.transform, grass, white, grey);
-        Transform goalFrame = CreateGoalArea(gameplay.transform, white, transparentGoal);
+        CreateGoalArea(gameplay.transform, white, transparentGoal);
         GameObject player = CreateHumanoid("Player Striker", new Vector3(0f, 0f, -8.35f), Quaternion.identity, gameplay.transform, blue, white);
         GameObject keeper = CreateHumanoid("Goalkeeper", new Vector3(0f, 0f, 8.65f), Quaternion.Euler(0f, 180f, 0f), gameplay.transform, red, white);
 
@@ -113,8 +98,8 @@ public static class EasyLevelSceneBuilder
         if (ballBody != null)
         {
             ballBody.mass = 0.45f;
-            ballBody.drag = 0.18f;
-            ballBody.angularDrag = 0.08f;
+            ballBody.linearDamping = 0.18f;
+            ballBody.angularDamping = 0.08f;
             ballBody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             ballBody.isKinematic = true;
         }
@@ -141,9 +126,6 @@ public static class EasyLevelSceneBuilder
         Assign(manager, "goalkeeper", keeper.transform);
         Assign(manager, "keeperHome", keeperHome);
         Assign(manager, "aimMarker", aimMarker);
-        Assign(manager, "leftPost", goalFrame.Find("Left Post"));
-        Assign(manager, "rightPost", goalFrame.Find("Right Post"));
-        Assign(manager, "crossbar", goalFrame.Find("Crossbar"));
         Assign(manager, "obstacles", obstacles);
         Assign(manager, "mainMenuPanel", refs.MainMenu);
         Assign(manager, "hudPanel", refs.Hud);
@@ -152,16 +134,73 @@ public static class EasyLevelSceneBuilder
         Assign(manager, "timerText", refs.TimerText);
         Assign(manager, "messageText", refs.MessageText);
         Assign(manager, "gameOverText", refs.GameOverText);
-        Assign(manager, "powerSlider", refs.PowerSlider);
         Assign(manager, "audioSource", audioSource);
+        Assign(manager, "startImmediately", true);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
-        EnsureSceneInBuildSettings(ScenePath);
+        EnsureSceneInBuildSettings(StartMenuScenePath, ScenePath);
         AssetDatabase.SaveAssets();
         Debug.Log("Built default Easy level scene: " + ScenePath);
     }
 
-    [MenuItem("Tools/Penalty Shootout/Capture Current Scene To Builder")]
+    private static void BuildStartMenuScene()
+    {
+        Directory.CreateDirectory("Assets/Scenes");
+        Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        Material grass = CreateMaterial("Assets/Materials/PS_Grass.mat", new Color(0.12f, 0.48f, 0.18f));
+        Material white = CreateMaterial("Assets/Materials/PS_White.mat", Color.white);
+        Material yellow = CreateMaterial("Assets/Materials/PS_Yellow.mat", new Color(1f, 0.78f, 0.15f));
+        Material red = CreateMaterial("Assets/Materials/PS_Red.mat", new Color(0.9f, 0.16f, 0.12f));
+
+        GameObject cameraObject = new GameObject("Main Camera");
+        cameraObject.tag = "MainCamera";
+        cameraObject.transform.SetPositionAndRotation(new Vector3(0f, 4.3f, -11.8f), Quaternion.Euler(18f, 0f, 0f));
+        Camera camera = cameraObject.AddComponent<Camera>();
+        camera.fieldOfView = 50f;
+        camera.clearFlags = CameraClearFlags.Skybox;
+        cameraObject.AddComponent<AudioListener>();
+
+        GameObject lightObject = new GameObject("Menu Sun Light");
+        lightObject.transform.rotation = Quaternion.Euler(45f, -25f, 0f);
+        Light light = lightObject.AddComponent<Light>();
+        light.type = LightType.Directional;
+        light.intensity = 1.25f;
+
+        GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        ground.name = "Menu Pitch";
+        ground.transform.localScale = new Vector3(2.6f, 1f, 2.4f);
+        ground.GetComponent<Renderer>().sharedMaterial = grass;
+
+        CreatePost("Menu Left Post", new Vector3(-2.4f, 1.15f, 8.9f), new Vector3(0.12f, 2.3f, 0.12f), null, white);
+        CreatePost("Menu Right Post", new Vector3(2.4f, 1.15f, 8.9f), new Vector3(0.12f, 2.3f, 0.12f), null, white);
+        CreatePost("Menu Crossbar", new Vector3(0f, 2.3f, 8.9f), new Vector3(4.9f, 0.12f, 0.12f), null, white);
+
+        GameObject ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        ball.name = "Menu Ball";
+        ball.transform.position = new Vector3(0f, 0.38f, -2.6f);
+        ball.transform.localScale = Vector3.one * 0.7f;
+        ball.GetComponent<Renderer>().sharedMaterial = yellow;
+
+        GameObject keeper = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        keeper.name = "Menu Goalkeeper";
+        keeper.transform.position = new Vector3(0f, 0.9f, 7.8f);
+        keeper.GetComponent<Renderer>().sharedMaterial = red;
+        Object.DestroyImmediate(keeper.GetComponent<Collider>());
+
+        GameObject controllerObject = new GameObject("Main Menu Controller");
+        MainMenuController controller = controllerObject.AddComponent<MainMenuController>();
+        Assign(controller, "easyLevelSceneName", "EasyPenaltyShootout");
+
+        CreateStartMenuUi(controller);
+
+        EditorSceneManager.SaveScene(scene, StartMenuScenePath);
+        EnsureSceneInBuildSettings(StartMenuScenePath, ScenePath);
+        AssetDatabase.SaveAssets();
+        Debug.Log("Built start menu scene: " + StartMenuScenePath);
+    }
+
+    [MenuItem("Tools/Penalty Shootout/Capture", false, 2002)]
     public static void CaptureCurrentScene()
     {
         Directory.CreateDirectory("Assets/Scenes/Levels");
@@ -291,7 +330,7 @@ public static class EasyLevelSceneBuilder
         return obstacles.ToArray();
     }
 
-    private static UiRefs CreateUi(Transform parent, GameObject captureReceiver)
+    private static UiRefs CreateUi(Transform parent, GameObject managerObject)
     {
         GameObject eventSystem = new GameObject("EventSystem");
         eventSystem.transform.SetParent(parent);
@@ -309,27 +348,49 @@ public static class EasyLevelSceneBuilder
 
         GameObject mainMenu = CreatePanel("Main Menu", canvasObject.transform, new Color(0.02f, 0.05f, 0.09f, 0.82f));
         CreateText("Title", "Penalty Shootout Arena", mainMenu.transform, 54, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.68f), new Vector2(760f, 90f));
-        CreateText("Subtitle", "Easy Level - A/D move, W/S aim, click shoots", mainMenu.transform, 28, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.58f), new Vector2(760f, 50f));
+        CreateText("Subtitle", "Reach 10 points. Goal +1, highlighted target +2, miss -1.", mainMenu.transform, 28, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.58f), new Vector2(900f, 50f));
         Button easyButton = CreateButton("Start Easy Button", "Start Easy", mainMenu.transform, new Vector2(0.5f, 0.45f), new Vector2(260f, 66f));
 
         GameObject hud = CreatePanel("HUD", canvasObject.transform, new Color(0f, 0f, 0f, 0f));
-        Text score = CreateText("Score Text", "Score: 0", hud.transform, 30, TextAnchor.MiddleLeft, new Vector2(0.08f, 0.93f), new Vector2(260f, 48f));
-        Text timer = CreateText("Timer Text", "Time: 60", hud.transform, 30, TextAnchor.MiddleRight, new Vector2(0.9f, 0.93f), new Vector2(260f, 48f));
+        Text score = CreateHudText("Score Text", "Points: 0 / 10", hud.transform, TextAnchor.MiddleLeft, new Vector2(0.12f, 0.93f), new Vector2(390f, 62f));
+        Text timer = CreateHudText("Timer Text", "Time: 60", hud.transform, TextAnchor.MiddleRight, new Vector2(0.88f, 0.93f), new Vector2(300f, 62f));
         Text message = CreateText("Message Text", "", hud.transform, 24, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.86f), new Vector2(900f, 48f));
-        Slider power = CreateSlider("Power Slider", hud.transform, new Vector2(0.5f, 0.08f), new Vector2(420f, 28f));
-        Button captureButton = CreateButton("Capture Scene Button", "Capture Scene", hud.transform, new Vector2(0.9f, 0.08f), new Vector2(230f, 54f));
-        EditorSceneCaptureButton capture = captureReceiver.AddComponent<EditorSceneCaptureButton>();
-        UnityEventTools.AddPersistentListener(captureButton.onClick, capture.CaptureSceneForBuilder);
 
         GameObject gameOver = CreatePanel("Game Over", canvasObject.transform, new Color(0.02f, 0.03f, 0.05f, 0.84f));
         Text gameOverText = CreateText("Game Over Text", "Game Over", gameOver.transform, 44, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.6f), new Vector2(620f, 180f));
         Button restartButton = CreateButton("Restart Button", "Restart", gameOver.transform, new Vector2(0.5f, 0.38f), new Vector2(240f, 64f));
 
-        PenaltyGameManager manager = captureReceiver.GetComponent<PenaltyGameManager>();
+        PenaltyGameManager manager = managerObject.GetComponent<PenaltyGameManager>();
         UnityEventTools.AddPersistentListener(easyButton.onClick, manager.StartEasyMatch);
         UnityEventTools.AddPersistentListener(restartButton.onClick, manager.RestartFromGameOver);
 
-        return new UiRefs(mainMenu, hud, gameOver, score, timer, message, gameOverText, power);
+        return new UiRefs(mainMenu, hud, gameOver, score, timer, message, gameOverText);
+    }
+
+    private static void CreateStartMenuUi(MainMenuController controller)
+    {
+        GameObject eventSystem = new GameObject("EventSystem");
+        eventSystem.AddComponent<EventSystem>();
+        eventSystem.AddComponent<StandaloneInputModule>();
+
+        GameObject canvasObject = new GameObject("Canvas");
+        Canvas canvas = canvasObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        canvasObject.AddComponent<GraphicRaycaster>();
+
+        GameObject overlay = CreatePanel("Menu Overlay", canvasObject.transform, new Color(0.015f, 0.02f, 0.03f, 0.58f));
+        CreateText("Game Title", "Penalty Shootout 3D", overlay.transform, 68, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.74f), new Vector2(980f, 110f));
+        Text subtitle = CreateText("Menu Subtitle", "Choose your level", overlay.transform, 30, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.64f), new Vector2(520f, 54f));
+        subtitle.color = new Color(1f, 0.86f, 0.24f, 1f);
+
+        Button easyButton = CreateButton("Easy Level Button", "Easy Level", overlay.transform, new Vector2(0.5f, 0.48f), new Vector2(360f, 76f));
+        Button quitButton = CreateButton("Quit Button", "Quit", overlay.transform, new Vector2(0.5f, 0.38f), new Vector2(260f, 62f));
+
+        UnityEventTools.AddPersistentListener(easyButton.onClick, controller.LoadEasyLevel);
+        UnityEventTools.AddPersistentListener(quitButton.onClick, controller.QuitGame);
     }
 
     private static GameObject CreatePanel(string name, Transform parent, Color color)
@@ -366,6 +427,22 @@ public static class EasyLevelSceneBuilder
         return text;
     }
 
+    private static Text CreateHudText(string name, string value, Transform parent, TextAnchor anchor, Vector2 anchorCenter, Vector2 dimensions)
+    {
+        GameObject container = new GameObject(name + " Panel");
+        container.transform.SetParent(parent, false);
+        RectTransform containerRect = container.AddComponent<RectTransform>();
+        containerRect.anchorMin = anchorCenter;
+        containerRect.anchorMax = anchorCenter;
+        containerRect.sizeDelta = dimensions;
+        Image background = container.AddComponent<Image>();
+        background.color = new Color(1f, 0.82f, 0.12f, 0.94f);
+
+        Text text = CreateText(name, value, container.transform, 34, anchor, new Vector2(0.5f, 0.5f), dimensions - new Vector2(34f, 0f));
+        text.color = new Color(0.02f, 0.025f, 0.03f, 1f);
+        return text;
+    }
+
     private static Button CreateButton(string name, string label, Transform parent, Vector2 anchorCenter, Vector2 dimensions)
     {
         GameObject buttonObject = new GameObject(name);
@@ -380,52 +457,6 @@ public static class EasyLevelSceneBuilder
         Text text = CreateText("Label", label, buttonObject.transform, 26, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), dimensions);
         text.color = new Color(0.05f, 0.05f, 0.06f);
         return button;
-    }
-
-    private static Slider CreateSlider(string name, Transform parent, Vector2 anchorCenter, Vector2 dimensions)
-    {
-        GameObject sliderObject = new GameObject(name);
-        sliderObject.transform.SetParent(parent, false);
-        RectTransform rect = sliderObject.AddComponent<RectTransform>();
-        rect.anchorMin = anchorCenter;
-        rect.anchorMax = anchorCenter;
-        rect.sizeDelta = dimensions;
-
-        Slider slider = sliderObject.AddComponent<Slider>();
-        slider.minValue = 0f;
-        slider.maxValue = 1f;
-        slider.value = 0.65f;
-
-        GameObject background = new GameObject("Background");
-        background.transform.SetParent(sliderObject.transform, false);
-        RectTransform bgRect = background.AddComponent<RectTransform>();
-        bgRect.anchorMin = Vector2.zero;
-        bgRect.anchorMax = Vector2.one;
-        bgRect.offsetMin = Vector2.zero;
-        bgRect.offsetMax = Vector2.zero;
-        Image bg = background.AddComponent<Image>();
-        bg.color = new Color(0f, 0f, 0f, 0.48f);
-
-        GameObject fillArea = new GameObject("Fill Area");
-        fillArea.transform.SetParent(sliderObject.transform, false);
-        RectTransform fillAreaRect = fillArea.AddComponent<RectTransform>();
-        fillAreaRect.anchorMin = Vector2.zero;
-        fillAreaRect.anchorMax = Vector2.one;
-        fillAreaRect.offsetMin = new Vector2(4f, 4f);
-        fillAreaRect.offsetMax = new Vector2(-4f, -4f);
-
-        GameObject fill = new GameObject("Fill");
-        fill.transform.SetParent(fillArea.transform, false);
-        RectTransform fillRect = fill.AddComponent<RectTransform>();
-        fillRect.anchorMin = Vector2.zero;
-        fillRect.anchorMax = Vector2.one;
-        fillRect.offsetMin = Vector2.zero;
-        fillRect.offsetMax = Vector2.zero;
-        Image fillImage = fill.AddComponent<Image>();
-        fillImage.color = new Color(0.95f, 0.72f, 0.18f, 1f);
-        slider.fillRect = fillRect;
-        slider.targetGraphic = fillImage;
-        return slider;
     }
 
     private static Transform CreateAimMarker(Transform parent, Material yellow)
@@ -452,7 +483,10 @@ public static class EasyLevelSceneBuilder
     {
         GameObject post = GameObject.CreatePrimitive(PrimitiveType.Cube);
         post.name = name;
-        post.transform.SetParent(parent);
+        if (parent != null)
+        {
+            post.transform.SetParent(parent);
+        }
         post.transform.position = position;
         post.transform.localScale = scale;
         post.GetComponent<Renderer>().sharedMaterial = material;
@@ -493,39 +527,6 @@ public static class EasyLevelSceneBuilder
         part.transform.localScale = localScale;
         part.GetComponent<Renderer>().sharedMaterial = material;
         return part;
-    }
-
-    private static GameObject SpawnPrefabOrCapsule(string assetPath, string name, Vector3 position, Quaternion rotation, Transform parent, Material fallbackMaterial)
-    {
-        GameObject obj = SpawnPrefab(assetPath, name, position, rotation, parent);
-        if (obj != null)
-        {
-            return obj;
-        }
-
-        obj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        obj.name = name;
-        obj.transform.SetParent(parent);
-        obj.transform.SetPositionAndRotation(position, rotation);
-        obj.transform.localScale = new Vector3(0.65f, 1.3f, 0.65f);
-        obj.GetComponent<Renderer>().sharedMaterial = fallbackMaterial;
-        return obj;
-    }
-
-    private static GameObject SpawnPrefabOrPrimitive(string assetPath, PrimitiveType type, string name, Vector3 position, Quaternion rotation, Transform parent, Material fallbackMaterial)
-    {
-        GameObject obj = SpawnPrefab(assetPath, name, position, rotation, parent);
-        if (obj != null)
-        {
-            return obj;
-        }
-
-        obj = GameObject.CreatePrimitive(type);
-        obj.name = name;
-        obj.transform.SetParent(parent);
-        obj.transform.SetPositionAndRotation(position, rotation);
-        obj.GetComponent<Renderer>().sharedMaterial = fallbackMaterial;
-        return obj;
     }
 
     private static GameObject SpawnPrefab(string assetPath, string name, Vector3 position, Quaternion rotation, Transform parent)
@@ -600,6 +601,14 @@ public static class EasyLevelSceneBuilder
         {
             property.objectReferenceValue = objectValue;
         }
+        else if (value is bool boolValue)
+        {
+            property.boolValue = boolValue;
+        }
+        else if (value is string stringValue)
+        {
+            property.stringValue = stringValue;
+        }
         else if (value is MovingObstacle[] obstacles)
         {
             property.arraySize = obstacles.Length;
@@ -612,14 +621,20 @@ public static class EasyLevelSceneBuilder
         serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 
-    private static void EnsureSceneInBuildSettings(string path)
+    private static void EnsureSceneInBuildSettings(params string[] requiredPaths)
     {
         List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
-        if (!scenes.Exists(scene => scene.path == path))
+        for (int i = requiredPaths.Length - 1; i >= 0; i--)
         {
-            scenes.Add(new EditorBuildSettingsScene(path, true));
-            EditorBuildSettings.scenes = scenes.ToArray();
+            scenes.RemoveAll(scene => scene.path == requiredPaths[i]);
         }
+
+        for (int i = requiredPaths.Length - 1; i >= 0; i--)
+        {
+            scenes.Insert(0, new EditorBuildSettingsScene(requiredPaths[i], true));
+        }
+
+        EditorBuildSettings.scenes = scenes.ToArray();
     }
 
     private readonly struct UiRefs
@@ -631,9 +646,8 @@ public static class EasyLevelSceneBuilder
         public readonly Text TimerText;
         public readonly Text MessageText;
         public readonly Text GameOverText;
-        public readonly Slider PowerSlider;
 
-        public UiRefs(GameObject mainMenu, GameObject hud, GameObject gameOver, Text scoreText, Text timerText, Text messageText, Text gameOverText, Slider powerSlider)
+        public UiRefs(GameObject mainMenu, GameObject hud, GameObject gameOver, Text scoreText, Text timerText, Text messageText, Text gameOverText)
         {
             MainMenu = mainMenu;
             Hud = hud;
@@ -642,38 +656,6 @@ public static class EasyLevelSceneBuilder
             TimerText = timerText;
             MessageText = messageText;
             GameOverText = gameOverText;
-            PowerSlider = powerSlider;
-        }
-    }
-}
-
-public sealed class PenaltyBuilderWindow : EditorWindow
-{
-    public static void ShowWindow()
-    {
-        GetWindow<PenaltyBuilderWindow>("Penalty Builder");
-    }
-
-    private void OnGUI()
-    {
-        GUILayout.Label("Penalty Shootout Arena", EditorStyles.boldLabel);
-        EditorGUILayout.HelpBox(
-            "Build creates the Easy level scene. Capture saves the currently open scene so the next Build recreates exactly that captured version.",
-            MessageType.Info);
-
-        if (GUILayout.Button("Build Easy Level Scene", GUILayout.Height(36f)))
-        {
-            EasyLevelSceneBuilder.BuildEasyLevelScene();
-        }
-
-        if (GUILayout.Button("Rebuild Default Easy Level Scene", GUILayout.Height(36f)))
-        {
-            EasyLevelSceneBuilder.RebuildDefaultEasyLevelScene();
-        }
-
-        if (GUILayout.Button("Capture Current Scene To Builder", GUILayout.Height(36f)))
-        {
-            EasyLevelSceneBuilder.CaptureCurrentScene();
         }
     }
 }
