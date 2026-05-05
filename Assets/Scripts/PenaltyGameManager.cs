@@ -30,15 +30,18 @@ public sealed class PenaltyGameManager : MonoBehaviour
     [SerializeField] private GameObject gameOverPanel;
     [SerializeField] private Text scoreText;
     [SerializeField] private Text timerText;
+    [SerializeField] private Text difficultyText;
     [SerializeField] private Text messageText;
     [SerializeField] private Text gameOverText;
 
     [Header("Audio")]
     [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioSource musicSource;
     [SerializeField] private AudioClip kickClip;
     [SerializeField] private AudioClip goalClip;
     [SerializeField] private AudioClip saveClip;
     [SerializeField] private AudioClip whistleClip;
+    [SerializeField] private AudioClip musicClip;
 
     [Header("Easy Level")]
     [SerializeField] private float matchLength = 60f;
@@ -72,7 +75,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
     private const float GoalHalfWidth = 2.25f;
     private const float GoalHeight = 2.35f;
     private const float PlayerHalfRange = 2.05f;
-    private const int WinningScore = 10;
+    private const int WinningScore = 5;
     private const float BonusTargetX = 1.45f;
     private const float BonusTargetY = 1.7f;
     private const float BonusTargetHalfSize = 0.325f;
@@ -83,6 +86,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         goalClip = goalClip != null ? goalClip : CreateTone("Goal", 660f, 0.22f, 0.45f);
         saveClip = saveClip != null ? saveClip : CreateTone("Save", 220f, 0.16f, 0.45f);
         whistleClip = whistleClip != null ? whistleClip : CreateTone("Whistle", 920f, 0.18f, 0.35f);
+        musicClip = musicClip != null ? musicClip : CreateMusicLoop();
         keeperStartScale = goalkeeper != null ? goalkeeper.localScale : Vector3.one;
         playerStartScale = player != null ? player.localScale : Vector3.one;
         playerHomePosition = player != null ? player.position : Vector3.zero;
@@ -158,7 +162,8 @@ public sealed class PenaltyGameManager : MonoBehaviour
         mainMenuPanel.SetActive(false);
         hudPanel.SetActive(true);
         gameOverPanel.SetActive(false);
-        messageText.text = "Reach 10 points. Normal goal +1, highlighted target +2, miss -1.";
+        messageText.text = "Reach 5 points. Normal goal +1, highlighted target +2, miss -1.";
+        PlayMusic();
         PlayClip(whistleClip);
         ResetShot();
         UpdateHud();
@@ -171,6 +176,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         hudPanel.SetActive(false);
         gameOverPanel.SetActive(false);
         messageText.text = string.Empty;
+        StopMusic();
         ResetShot();
     }
 
@@ -356,7 +362,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
         else
         {
-            score--;
+            score = Mathf.Max(0, score - 1);
             PlayClip(saveClip);
             StartCoroutine(LoseAnimation());
         }
@@ -450,6 +456,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         hudPanel.SetActive(false);
         gameOverPanel.SetActive(true);
         gameOverText.text = won ? "You Win!\nPoints: " + score + "\nShots: " + shots : "You Lose\nPoints: " + score + "\nShots: " + shots;
+        StopMusic();
         PlayClip(whistleClip);
     }
 
@@ -457,6 +464,10 @@ public sealed class PenaltyGameManager : MonoBehaviour
     {
         scoreText.text = "Points: " + score + " / " + WinningScore;
         timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(0f, timer));
+        if (difficultyText != null)
+        {
+            difficultyText.text = "Difficulty: " + Mathf.RoundToInt(Mathf.Clamp01(currentDifficulty) * 100f) + "%";
+        }
 
         foreach (MovingObstacle obstacle in obstacles)
         {
@@ -709,6 +720,30 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
     }
 
+    private void PlayMusic()
+    {
+        if (musicSource == null || musicClip == null)
+        {
+            return;
+        }
+
+        musicSource.clip = musicClip;
+        musicSource.loop = true;
+        musicSource.volume = 0.16f;
+        if (!musicSource.isPlaying)
+        {
+            musicSource.Play();
+        }
+    }
+
+    private void StopMusic()
+    {
+        if (musicSource != null)
+        {
+            musicSource.Stop();
+        }
+    }
+
     private static AudioClip CreateTone(string clipName, float frequency, float length, float volume)
     {
         const int sampleRate = 44100;
@@ -723,6 +758,27 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
 
         AudioClip clip = AudioClip.Create(clipName, sampleCount, 1, sampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
+    }
+
+    private static AudioClip CreateMusicLoop()
+    {
+        const int sampleRate = 44100;
+        const float length = 1.6f;
+        int sampleCount = Mathf.CeilToInt(sampleRate * length);
+        float[] samples = new float[sampleCount];
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float t = i / (float)sampleRate;
+            float beat = Mathf.Sin(2f * Mathf.PI * 2f * t) > 0.15f ? 1f : 0.35f;
+            float bass = Mathf.Sin(2f * Mathf.PI * 82f * t) * 0.08f;
+            float pulse = Mathf.Sin(2f * Mathf.PI * 164f * t) * 0.035f * beat;
+            samples[i] = bass + pulse;
+        }
+
+        AudioClip clip = AudioClip.Create("Stadium Pulse", sampleCount, 1, sampleRate, false);
         clip.SetData(samples, 0);
         return clip;
     }

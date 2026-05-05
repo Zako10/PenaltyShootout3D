@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -11,7 +12,7 @@ using UnityEngine.UI;
 [InitializeOnLoad]
 public static class EasyLevelAutoRepair
 {
-    private const string SessionKey = "PenaltyShootout.AutoRepairedEasyLevel.v2";
+    private const string SessionKey = "PenaltyShootout.AutoRepairedEasyLevel.v3";
 
     static EasyLevelAutoRepair()
     {
@@ -45,6 +46,15 @@ public static class EasyLevelSceneBuilder
     private const string TribunePrefab = "Assets/Lightning Poly/Football Essentials 3D/Prefabs/Tribune.prefab";
     private const string ScoreboardPrefab = "Assets/Lightning Poly/Football Essentials 3D/Prefabs/Scoreboard.prefab";
     private const string StadiumPrefab = "Assets/Hayq Art/GrantStadium/Prefabs/Buildings/SM_Stadium.prefab";
+    private const string PlayerPrefabPath = "Assets/Prefabs/PlayerStriker.prefab";
+    private const string GoalkeeperPrefabPath = "Assets/Prefabs/Goalkeeper.prefab";
+    private const string BallPrefabPath = "Assets/Prefabs/Ball.prefab";
+    private const string GoalAreaPrefabPath = "Assets/Prefabs/GoalArea.prefab";
+    private const string MovingConePrefabPath = "Assets/Prefabs/MovingCone.prefab";
+    private const string PlayerIdleClipPath = "Assets/Animations/PlayerReady.anim";
+    private const string KeeperIdleClipPath = "Assets/Animations/KeeperReady.anim";
+    private const string PlayerControllerPath = "Assets/Animations/PlayerAnimator.controller";
+    private const string KeeperControllerPath = "Assets/Animations/KeeperAnimator.controller";
 
     [MenuItem("Tools/Penalty Shootout/Build Scene", false, 2001)]
     public static void BuildEasyLevelScene()
@@ -58,9 +68,94 @@ public static class EasyLevelSceneBuilder
         BuildDefaultEasyLevelScene();
     }
 
+    private static void EnsureProjectFolders()
+    {
+        string[] folders =
+        {
+            "Assets/3rd-Party",
+            "Assets/Animations",
+            "Assets/Audio & Music",
+            "Assets/Audio & Music/SFX",
+            "Assets/Materials",
+            "Assets/Models",
+            "Assets/Plugins",
+            "Assets/Prefabs",
+            "Assets/Resources",
+            "Assets/Sandbox",
+            "Assets/Scenes",
+            "Assets/Scenes/Levels",
+            "Assets/Scenes/Other",
+            "Assets/Scripts",
+            "Assets/Shaders",
+            "Assets/Textures"
+        };
+
+        foreach (string folder in folders)
+        {
+            Directory.CreateDirectory(folder);
+        }
+    }
+
+    private static void EnsureAnimationAssets()
+    {
+        AnimationClip playerClip = CreateLoopingClip(PlayerIdleClipPath, 0.035f, 0f);
+        AnimationClip keeperClip = CreateLoopingClip(KeeperIdleClipPath, 0.018f, 4f);
+        CreateAnimatorController(PlayerControllerPath, playerClip);
+        CreateAnimatorController(KeeperControllerPath, keeperClip);
+        AssetDatabase.SaveAssets();
+    }
+
+    private static AnimationClip CreateLoopingClip(string path, float bobAmount, float tiltAmount)
+    {
+        AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+        if (clip == null)
+        {
+            clip = new AnimationClip();
+            AssetDatabase.CreateAsset(clip, path);
+        }
+
+        clip.frameRate = 30f;
+        clip.wrapMode = WrapMode.Loop;
+        AnimationUtility.SetEditorCurve(
+            clip,
+            EditorCurveBinding.FloatCurve(string.Empty, typeof(Transform), "m_LocalPosition.y"),
+            new AnimationCurve(
+                new Keyframe(0f, 0f),
+                new Keyframe(0.35f, bobAmount),
+                new Keyframe(0.7f, 0f)));
+
+        if (Mathf.Abs(tiltAmount) > 0f)
+        {
+            AnimationUtility.SetEditorCurve(
+                clip,
+                EditorCurveBinding.FloatCurve(string.Empty, typeof(Transform), "localEulerAnglesRaw.z"),
+                new AnimationCurve(
+                    new Keyframe(0f, -tiltAmount),
+                    new Keyframe(0.35f, tiltAmount),
+                    new Keyframe(0.7f, -tiltAmount)));
+        }
+
+        AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(clip);
+        settings.loopTime = true;
+        AnimationUtility.SetAnimationClipSettings(clip, settings);
+        EditorUtility.SetDirty(clip);
+        return clip;
+    }
+
+    private static void CreateAnimatorController(string path, AnimationClip clip)
+    {
+        if (AssetDatabase.LoadAssetAtPath<AnimatorController>(path) != null)
+        {
+            return;
+        }
+
+        AnimatorController.CreateAnimatorControllerAtPathWithClip(path, clip);
+    }
+
     private static void BuildDefaultEasyLevelScene()
     {
-        Directory.CreateDirectory("Assets/Scenes/Levels");
+        EnsureProjectFolders();
+        EnsureAnimationAssets();
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         Material grass = CreateMaterial("Assets/Materials/PS_Grass.mat", new Color(0.12f, 0.48f, 0.18f));
@@ -113,10 +208,15 @@ public static class EasyLevelSceneBuilder
         Transform keeperHome = CreateMarker("Keeper Home", keeper.transform.position, gameplay.transform);
         Transform aimMarker = CreateAimMarker(gameplay.transform, yellow);
         MovingObstacle[] obstacles = CreateObstacles(gameplay.transform, yellow, black);
+        SavePrefabAndKeepInstance(player, PlayerPrefabPath);
+        SavePrefabAndKeepInstance(keeper, GoalkeeperPrefabPath);
+        SavePrefabAndKeepInstance(ball, BallPrefabPath);
+        SavePrefabAndKeepInstance(GameObject.Find("Goal Area"), GoalAreaPrefabPath);
 
         GameObject managerObject = new GameObject("Penalty Game Manager");
         managerObject.transform.SetParent(gameplay.transform);
         AudioSource audioSource = managerObject.AddComponent<AudioSource>();
+        AudioSource musicSource = managerObject.AddComponent<AudioSource>();
         PenaltyGameManager manager = managerObject.AddComponent<PenaltyGameManager>();
 
         UiRefs refs = CreateUi(uiRoot.transform, managerObject);
@@ -132,9 +232,11 @@ public static class EasyLevelSceneBuilder
         Assign(manager, "gameOverPanel", refs.GameOver);
         Assign(manager, "scoreText", refs.ScoreText);
         Assign(manager, "timerText", refs.TimerText);
+        Assign(manager, "difficultyText", refs.DifficultyText);
         Assign(manager, "messageText", refs.MessageText);
         Assign(manager, "gameOverText", refs.GameOverText);
         Assign(manager, "audioSource", audioSource);
+        Assign(manager, "musicSource", musicSource);
         Assign(manager, "startImmediately", true);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
@@ -145,7 +247,7 @@ public static class EasyLevelSceneBuilder
 
     private static void BuildStartMenuScene()
     {
-        Directory.CreateDirectory("Assets/Scenes");
+        EnsureProjectFolders();
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         Material grass = CreateMaterial("Assets/Materials/PS_Grass.mat", new Color(0.12f, 0.48f, 0.18f));
@@ -315,19 +417,31 @@ public static class EasyLevelSceneBuilder
 
         for (int i = 0; i < positions.Length; i++)
         {
-            GameObject cone = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            GameObject cone = CreateMovingCone();
             cone.name = "Moving Cone " + (i + 1);
             cone.transform.SetParent(parent);
             cone.transform.position = positions[i];
-            cone.transform.localScale = new Vector3(0.35f, 0.35f, 0.35f);
             cone.GetComponent<Renderer>().sharedMaterial = i % 2 == 0 ? yellow : black;
-            Rigidbody rb = cone.AddComponent<Rigidbody>();
-            rb.isKinematic = true;
-            MovingObstacle obstacle = cone.AddComponent<MovingObstacle>();
+            MovingObstacle obstacle = cone.GetComponent<MovingObstacle>();
             obstacles.Add(obstacle);
+
+            if (i == 0)
+            {
+                SavePrefabAndKeepInstance(cone, MovingConePrefabPath);
+            }
         }
 
         return obstacles.ToArray();
+    }
+
+    private static GameObject CreateMovingCone()
+    {
+        GameObject cone = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        cone.transform.localScale = new Vector3(0.35f, 0.35f, 0.35f);
+        Rigidbody rb = cone.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        cone.AddComponent<MovingObstacle>();
+        return cone;
     }
 
     private static UiRefs CreateUi(Transform parent, GameObject managerObject)
@@ -348,12 +462,13 @@ public static class EasyLevelSceneBuilder
 
         GameObject mainMenu = CreatePanel("Main Menu", canvasObject.transform, new Color(0.02f, 0.05f, 0.09f, 0.82f));
         CreateText("Title", "Penalty Shootout Arena", mainMenu.transform, 54, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.68f), new Vector2(760f, 90f));
-        CreateText("Subtitle", "Reach 10 points. Goal +1, highlighted target +2, miss -1.", mainMenu.transform, 28, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.58f), new Vector2(900f, 50f));
+        CreateText("Subtitle", "Reach 5 points. Goal +1, highlighted target +2, miss -1.", mainMenu.transform, 28, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.58f), new Vector2(900f, 50f));
         Button easyButton = CreateButton("Start Easy Button", "Start Easy", mainMenu.transform, new Vector2(0.5f, 0.45f), new Vector2(260f, 66f));
 
         GameObject hud = CreatePanel("HUD", canvasObject.transform, new Color(0f, 0f, 0f, 0f));
-        Text score = CreateHudText("Score Text", "Points: 0 / 10", hud.transform, TextAnchor.MiddleLeft, new Vector2(0.12f, 0.93f), new Vector2(390f, 62f));
+        Text score = CreateHudText("Score Text", "Points: 0 / 5", hud.transform, TextAnchor.MiddleLeft, new Vector2(0.12f, 0.93f), new Vector2(390f, 62f));
         Text timer = CreateHudText("Timer Text", "Time: 60", hud.transform, TextAnchor.MiddleRight, new Vector2(0.88f, 0.93f), new Vector2(300f, 62f));
+        Text difficulty = CreateHudText("Difficulty Text", "Difficulty: 0%", hud.transform, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.93f), new Vector2(310f, 54f));
         Text message = CreateText("Message Text", "", hud.transform, 24, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.86f), new Vector2(900f, 48f));
 
         GameObject gameOver = CreatePanel("Game Over", canvasObject.transform, new Color(0.02f, 0.03f, 0.05f, 0.84f));
@@ -364,7 +479,7 @@ public static class EasyLevelSceneBuilder
         UnityEventTools.AddPersistentListener(easyButton.onClick, manager.StartEasyMatch);
         UnityEventTools.AddPersistentListener(restartButton.onClick, manager.RestartFromGameOver);
 
-        return new UiRefs(mainMenu, hud, gameOver, score, timer, message, gameOverText);
+        return new UiRefs(mainMenu, hud, gameOver, score, timer, difficulty, message, gameOverText);
     }
 
     private static void CreateStartMenuUi(MainMenuController controller)
@@ -509,12 +624,18 @@ public static class EasyLevelSceneBuilder
         root.transform.SetParent(parent);
         root.transform.SetPositionAndRotation(position, rotation);
 
-        CreateBodyPart("Body", PrimitiveType.Capsule, new Vector3(0f, 0.95f, 0f), new Vector3(0.52f, 0.82f, 0.52f), root.transform, kit);
-        CreateBodyPart("Head", PrimitiveType.Sphere, new Vector3(0f, 1.88f, 0f), new Vector3(0.34f, 0.34f, 0.34f), root.transform, skin);
-        CreateBodyPart("Left Arm", PrimitiveType.Capsule, new Vector3(-0.42f, 1.08f, 0f), new Vector3(0.16f, 0.5f, 0.16f), root.transform, kit).transform.rotation = rotation * Quaternion.Euler(0f, 0f, -24f);
-        CreateBodyPart("Right Arm", PrimitiveType.Capsule, new Vector3(0.42f, 1.08f, 0f), new Vector3(0.16f, 0.5f, 0.16f), root.transform, kit).transform.rotation = rotation * Quaternion.Euler(0f, 0f, 24f);
-        CreateBodyPart("Left Leg", PrimitiveType.Capsule, new Vector3(-0.18f, 0.3f, 0f), new Vector3(0.18f, 0.45f, 0.18f), root.transform, kit);
-        CreateBodyPart("Right Leg", PrimitiveType.Capsule, new Vector3(0.18f, 0.3f, 0f), new Vector3(0.18f, 0.45f, 0.18f), root.transform, kit);
+        GameObject visual = new GameObject("Animated Visual");
+        visual.transform.SetParent(root.transform, false);
+        Animator animator = visual.AddComponent<Animator>();
+        animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+            name.Contains("Goalkeeper") ? KeeperControllerPath : PlayerControllerPath);
+
+        CreateBodyPart("Body", PrimitiveType.Capsule, new Vector3(0f, 0.95f, 0f), new Vector3(0.52f, 0.82f, 0.52f), visual.transform, kit);
+        CreateBodyPart("Head", PrimitiveType.Sphere, new Vector3(0f, 1.88f, 0f), new Vector3(0.34f, 0.34f, 0.34f), visual.transform, skin);
+        CreateBodyPart("Left Arm", PrimitiveType.Capsule, new Vector3(-0.42f, 1.08f, 0f), new Vector3(0.16f, 0.5f, 0.16f), visual.transform, kit).transform.localRotation = Quaternion.Euler(0f, 0f, -24f);
+        CreateBodyPart("Right Arm", PrimitiveType.Capsule, new Vector3(0.42f, 1.08f, 0f), new Vector3(0.16f, 0.5f, 0.16f), visual.transform, kit).transform.localRotation = Quaternion.Euler(0f, 0f, 24f);
+        CreateBodyPart("Left Leg", PrimitiveType.Capsule, new Vector3(-0.18f, 0.3f, 0f), new Vector3(0.18f, 0.45f, 0.18f), visual.transform, kit);
+        CreateBodyPart("Right Leg", PrimitiveType.Capsule, new Vector3(0.18f, 0.3f, 0f), new Vector3(0.18f, 0.45f, 0.18f), visual.transform, kit);
         return root;
     }
 
@@ -542,6 +663,17 @@ public static class EasyLevelSceneBuilder
         instance.transform.SetParent(parent);
         instance.transform.SetPositionAndRotation(position, rotation);
         return instance;
+    }
+
+    private static void SavePrefabAndKeepInstance(GameObject instance, string path)
+    {
+        if (instance == null)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        PrefabUtility.SaveAsPrefabAssetAndConnect(instance, path, InteractionMode.AutomatedAction);
     }
 
     private static Material CreateMaterial(string path, Color color)
@@ -644,16 +776,18 @@ public static class EasyLevelSceneBuilder
         public readonly GameObject GameOver;
         public readonly Text ScoreText;
         public readonly Text TimerText;
+        public readonly Text DifficultyText;
         public readonly Text MessageText;
         public readonly Text GameOverText;
 
-        public UiRefs(GameObject mainMenu, GameObject hud, GameObject gameOver, Text scoreText, Text timerText, Text messageText, Text gameOverText)
+        public UiRefs(GameObject mainMenu, GameObject hud, GameObject gameOver, Text scoreText, Text timerText, Text difficultyText, Text messageText, Text gameOverText)
         {
             MainMenu = mainMenu;
             Hud = hud;
             GameOver = gameOver;
             ScoreText = scoreText;
             TimerText = timerText;
+            DifficultyText = difficultyText;
             MessageText = messageText;
             GameOverText = gameOverText;
         }
