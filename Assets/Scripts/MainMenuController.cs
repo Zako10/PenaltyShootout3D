@@ -7,12 +7,14 @@ public sealed class MainMenuController : MonoBehaviour
     [SerializeField] private string hardLevelSceneName = "HardPenaltyShootout";
 
 
+
     public void LoadEasyLevel()
     {
         PlayerPrefs.SetInt("DifficultyLevel", 1);
         PlayerPrefs.Save();
         SceneManager.LoadScene(easyLevelSceneName);
     }
+
 
     public void LoadHardLevel()
     {

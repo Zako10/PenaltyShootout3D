@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using UnityEngine.SceneManagement;
 using UnityEngine;
 using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM
@@ -60,7 +61,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
     [SerializeField] private float hardDifficultyRampPerSecond = 0.05f;
 
     private bool isHardMode = false;
-
+    [SerializeField] private string startMenu = "StartMenu";
     private MatchState state = MatchState.Menu;
     private Vector2 aim = new Vector2(0f, 1.8f);
     private float timer;
@@ -162,14 +163,14 @@ public sealed class PenaltyGameManager : MonoBehaviour
         {
             UpdateAim();
             UpdateKeeperPatrol();
-            AnimatePlayerReady(); // ✅ idle when aiming
+            AnimatePlayerReady(); 
 
             if (WasShootPressed())
             {
                 Shoot();
             }
         }
-        else // ResolvingShot
+        else 
         {
             UpdateKeeperDive();
             CheckShotResult();
@@ -196,6 +197,11 @@ public sealed class PenaltyGameManager : MonoBehaviour
         PlayClip(whistleClip);
         ResetShot();
         UpdateHud();
+    }
+
+    public void ReturnToMainMenu()
+    {
+        SceneManager.LoadScene(startMenu);
     }
 
     public void ShowMenu()
@@ -301,7 +307,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
                     playerRunSpeed * Time.deltaTime);
             }
 
-            AnimatePlayerKicking(); // ✅ running animation while moving to ball
+            AnimatePlayerKicking(); 
 
             yield return null;
         }
@@ -391,21 +397,15 @@ public sealed class PenaltyGameManager : MonoBehaviour
             ? Mathf.Max(baseSpeed, requiredSpeed * 0.85f)
             : Mathf.Min(baseSpeed, requiredSpeed * 0.55f);
 
-        // ✅ Move toward dive target
         goalkeeper.position = Vector3.MoveTowards(
             goalkeeper.position,
             keeperDiveTarget,
             speed * Time.deltaTime);
 
-        // ✅ Determine dive direction
         float diveDirection = keeperDiveTarget.x - keeperHome.position.x;
 
-        // ✅ Calculate dive rotation based on direction
-        // Positive X = diving right → rotate Z negative (lean right)
-        // Negative X = diving left  → rotate Z positive (lean left)
         float zRotation = diveDirection > 0 ? -75f : 75f;
 
-        // ✅ Also tilt forward during dive
         float xRotation = 25f;
 
         Quaternion diveRotation = Quaternion.Euler(xRotation, 180f, zRotation);
@@ -413,7 +413,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         goalkeeper.rotation = Quaternion.Lerp(
             goalkeeper.rotation,
             diveRotation,
-            Time.deltaTime * 10f); // ✅ fast rotation to look like a dive
+            Time.deltaTime * 10f); 
     }
 
     private void CheckShotResult()
@@ -458,8 +458,8 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
         else
         {
-            // ✅ Hard mode allows negative scores, Easy mode stops at 0
-            score = isHardMode ? score - 1 : Mathf.Max(0, score - 1);
+
+            score = Mathf.Max(0, score - 1);
             PlayClip(saveClip);
             StartCoroutine(LoseAnimation());
         }
@@ -511,7 +511,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         {
             goalkeeper.SetPositionAndRotation(
                 keeperHome.position,
-                Quaternion.Euler(0f, 180f, 0f)); // ✅ back to upright
+                Quaternion.Euler(0f, 180f, 0f)); 
             goalkeeper.localScale = keeperStartScale;
         }
 
@@ -539,19 +539,16 @@ public sealed class PenaltyGameManager : MonoBehaviour
                 Vector3 ballPos = ball.position;
                 Vector3 ballVel = ball.linearVelocity;
 
-                // ✅ Exact time for ball to reach goal line using Z velocity
                 float distanceZ = GoalLineZ - ballPos.z;
                 float timeToGoal = ballVel.z > 0.01f
                     ? distanceZ / ballVel.z
                     : 0.3f;
 
-                // ✅ Predict exact X position at goal line
-                // Also accounts for X deceleration using drag approximation
-                float dragFactor = Mathf.Exp(-0.1f * timeToGoal); // approximates physics drag
+
+                float dragFactor = Mathf.Exp(-0.1f * timeToGoal); 
                 float predictedX = ballPos.x + ballVel.x * timeToGoal * dragFactor;
 
-                // ✅ Tiny error only — nearly perfect prediction in hard mode
-                float reactionError = Mathf.Lerp(0.2f, 0.02f, Mathf.Clamp01(currentDifficulty));
+                float reactionError = Mathf.Lerp(0.1f, 0.01f, Mathf.Clamp01(currentDifficulty));
                 targetX = predictedX + Random.Range(-reactionError, reactionError);
             }
             else
@@ -561,7 +558,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
         else
         {
-            // Easy mode unchanged
             float reactionError = Mathf.Lerp(1.45f, 0.75f, Mathf.Clamp01(currentDifficulty));
             targetX = aim.x + Random.Range(-reactionError, reactionError);
 
@@ -688,7 +684,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
     {
         if (player == null) return;
 
-        // ✅ Idle breathing bob
         float bob = Mathf.Sin(Time.time * 4f) * 0.025f;
         player.localScale = playerStartScale + new Vector3(0f, bob, 0f);
         player.rotation = Quaternion.identity;
@@ -698,12 +693,10 @@ public sealed class PenaltyGameManager : MonoBehaviour
     {
         if (player == null) return;
 
-        float speed = Time.time * 12f; // ✅ fast cycle to simulate leg movement
+        float speed = Time.time * 12f;
 
-        // ✅ Vertical bounce — simulates weight shifting between legs
         float bounce = Mathf.Abs(Mathf.Sin(speed)) * 0.04f;
 
-        // ✅ Squash and stretch — body compresses on ground, stretches in air
         float squashX = 1f + Mathf.Sin(speed * 2f) * 0.03f;
         float squashY = 1f + bounce * 0.8f;
         float squashZ = 1f - Mathf.Sin(speed * 2f) * 0.02f;
@@ -713,15 +706,12 @@ public sealed class PenaltyGameManager : MonoBehaviour
             playerStartScale.y * squashY,
             playerStartScale.z * squashZ);
 
-        // ✅ Side to side sway — simulates shifting weight left/right
         float sway = Mathf.Sin(speed) * 2.5f;
 
-        // ✅ Forward lean — player leans forward while running
         float forwardLean = 15f;
 
         player.rotation = Quaternion.Euler(forwardLean, 0f, sway);
 
-        // ✅ Vertical position bounce
         Vector3 pos = player.position;
         pos.y = playerHomePosition.y + bounce;
         player.position = pos;
@@ -731,7 +721,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
     {
         if (player == null) return;
 
-        // ✅ Lean further forward during kick approach
         float speed = Time.time * 16f;
         float bounce = Mathf.Abs(Mathf.Sin(speed)) * 0.06f;
 
@@ -743,8 +732,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
             playerStartScale.x * squashX,
             playerStartScale.y * squashY,
             playerStartScale.z * squashZ);
-
-        // ✅ More aggressive sway + lean when sprinting to ball
+        
         float sway = Mathf.Sin(speed) * 4f;
         float forwardLean = 25f;
 
