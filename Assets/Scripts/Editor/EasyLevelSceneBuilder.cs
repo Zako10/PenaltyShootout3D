@@ -476,7 +476,7 @@ public static class EasyLevelSceneBuilder
         Button restartButton = CreateButton("Restart Button", "Restart", gameOver.transform, new Vector2(0.5f, 0.38f), new Vector2(240f, 64f));
 
         PenaltyGameManager manager = managerObject.GetComponent<PenaltyGameManager>();
-        UnityEventTools.AddPersistentListener(easyButton.onClick, manager.StartEasyMatch);
+        UnityEventTools.AddPersistentListener(easyButton.onClick, manager.StartMatch);
         UnityEventTools.AddPersistentListener(restartButton.onClick, manager.RestartFromGameOver);
 
         return new UiRefs(mainMenu, hud, gameOver, score, timer, difficulty, message, gameOverText);

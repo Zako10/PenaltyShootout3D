@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM
@@ -53,6 +53,14 @@ public sealed class PenaltyGameManager : MonoBehaviour
     [SerializeField] private float difficultyRampPerSecond = 0.025f;
     [SerializeField] private bool startImmediately;
 
+    [Header("Hard Level Overrides")]
+    [SerializeField] private float hardShotPower = 24f;
+    [SerializeField] private float hardKeeperBaseSpeed = 3.5f;
+    [SerializeField] private float hardKeeperReactionDelay = 0.10f;
+    [SerializeField] private float hardDifficultyRampPerSecond = 0.05f;
+
+    private bool isHardMode = false;
+
     private MatchState state = MatchState.Menu;
     private Vector2 aim = new Vector2(0f, 1.8f);
     private float timer;
@@ -82,6 +90,8 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private void Awake()
     {
+        ApplyDifficultySettings();
+
         kickClip = kickClip != null ? kickClip : CreateTone("Kick", 120f, 0.09f, 0.7f);
         goalClip = goalClip != null ? goalClip : CreateTone("Goal", 660f, 0.22f, 0.45f);
         saveClip = saveClip != null ? saveClip : CreateTone("Save", 220f, 0.16f, 0.45f);
@@ -91,13 +101,28 @@ public sealed class PenaltyGameManager : MonoBehaviour
         playerStartScale = player != null ? player.localScale : Vector3.one;
         playerHomePosition = player != null ? player.position : Vector3.zero;
         EnsureBallCollisionReporter();
+
         if (startImmediately)
         {
-            StartEasyMatch();
+            StartMatch();
         }
         else
         {
             ShowMenu();
+        }
+    }
+
+    private void ApplyDifficultySettings()
+    {
+        int level = PlayerPrefs.GetInt("DifficultyLevel", 1);
+        isHardMode = (level == 3);
+
+        if (isHardMode)
+        {
+            baseShotPower = hardShotPower;
+            keeperBaseSpeed = hardKeeperBaseSpeed;
+            keeperEasyReactionDelay = hardKeeperReactionDelay;
+            difficultyRampPerSecond = hardDifficultyRampPerSecond;
         }
     }
 
@@ -107,7 +132,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         {
             if (WasStartPressed())
             {
-                StartEasyMatch();
+                StartMatch();
             }
 
             return;
@@ -117,7 +142,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         {
             if (state == MatchState.GameOver && WasRestartPressed())
             {
-                StartEasyMatch();
+                StartMatch();
             }
 
             return;
@@ -137,21 +162,21 @@ public sealed class PenaltyGameManager : MonoBehaviour
         {
             UpdateAim();
             UpdateKeeperPatrol();
-            AnimatePlayerReady();
+            AnimatePlayerReady(); // ✅ idle when aiming
 
             if (WasShootPressed())
             {
                 Shoot();
             }
         }
-        else
+        else // ResolvingShot
         {
             UpdateKeeperDive();
             CheckShotResult();
         }
     }
 
-    public void StartEasyMatch()
+    public void StartMatch()
     {
         state = MatchState.Playing;
         timer = matchLength;
@@ -162,7 +187,11 @@ public sealed class PenaltyGameManager : MonoBehaviour
         mainMenuPanel.SetActive(false);
         hudPanel.SetActive(true);
         gameOverPanel.SetActive(false);
-        messageText.text = "Reach 5 points. Normal goal +1, highlighted target +2, miss -1.";
+
+        messageText.text = isHardMode
+            ? "Reach 5 points. Score can go negative! Normal goal +1, highlighted target +2, miss -1."
+            : "Reach 5 points. Normal goal +1, highlighted target +2, miss -1.";
+
         PlayMusic();
         PlayClip(whistleClip);
         ResetShot();
@@ -182,7 +211,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     public void RestartFromGameOver()
     {
-        StartEasyMatch();
+        StartMatch();
     }
 
     private void UpdateAim()
@@ -203,7 +232,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
 
         aim.x = player != null ? player.position.x : aim.x;
-
         aim.x = Mathf.Clamp(aim.x, -GoalHalfWidth, GoalHalfWidth);
         aim.y = Mathf.Clamp(aim.y, 0.45f, GoalHeight);
 
@@ -221,7 +249,10 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
 
         Vector3 position = player.position;
-        position.x = Mathf.Clamp(position.x + horizontal * Time.deltaTime * 3.4f, -PlayerHalfRange, PlayerHalfRange);
+        position.x = Mathf.Clamp(
+            position.x + horizontal * Time.deltaTime * 3.4f,
+            -PlayerHalfRange,
+            PlayerHalfRange);
         player.position = position;
     }
 
@@ -260,9 +291,17 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
             if (direction.sqrMagnitude > 0.001f)
             {
-                player.rotation = Quaternion.Slerp(player.rotation, Quaternion.LookRotation(direction.normalized), Time.deltaTime * 14f);
-                player.position = Vector3.MoveTowards(player.position, kickSpot, playerRunSpeed * Time.deltaTime);
+                player.rotation = Quaternion.Slerp(
+                    player.rotation,
+                    Quaternion.LookRotation(direction.normalized),
+                    Time.deltaTime * 14f);
+                player.position = Vector3.MoveTowards(
+                    player.position,
+                    kickSpot,
+                    playerRunSpeed * Time.deltaTime);
             }
+
+            AnimatePlayerKicking(); // ✅ running animation while moving to ball
 
             yield return null;
         }
@@ -270,6 +309,11 @@ public sealed class PenaltyGameManager : MonoBehaviour
         KickBallNow();
         playerShotRoutine = null;
     }
+
+
+
+
+
 
     private void KickBallNow()
     {
@@ -284,7 +328,9 @@ public sealed class PenaltyGameManager : MonoBehaviour
         ball.linearVelocity = Vector3.zero;
         ball.angularVelocity = Vector3.zero;
         ball.AddForce(direction * baseShotPower, ForceMode.Impulse);
-        ball.AddTorque(new Vector3(Random.Range(2f, 5f), Random.Range(-3f, 3f), -6f), ForceMode.Impulse);
+        ball.AddTorque(
+            new Vector3(Random.Range(2f, 5f), Random.Range(-3f, 3f), -6f),
+            ForceMode.Impulse);
 
         shotHasBeenKicked = true;
         kickMoment = Time.time;
@@ -303,9 +349,16 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
         float patrolRange = Mathf.Lerp(0.55f, 1.4f, Mathf.Clamp01(currentDifficulty));
         float patrolSpeed = 1.1f + currentDifficulty * 0.9f;
-        Vector3 target = keeperHome.position + Vector3.right * Mathf.Sin(Time.time * patrolSpeed) * patrolRange;
-        goalkeeper.position = Vector3.MoveTowards(goalkeeper.position, target, (keeperBaseSpeed * 0.65f) * Time.deltaTime);
-        goalkeeper.rotation = Quaternion.Lerp(goalkeeper.rotation, Quaternion.Euler(0f, 180f, 0f), Time.deltaTime * 8f);
+        Vector3 target = keeperHome.position
+            + Vector3.right * Mathf.Sin(Time.time * patrolSpeed) * patrolRange;
+        goalkeeper.position = Vector3.MoveTowards(
+            goalkeeper.position,
+            target,
+            (keeperBaseSpeed * 0.65f) * Time.deltaTime);
+        goalkeeper.rotation = Quaternion.Lerp(
+            goalkeeper.rotation,
+            Quaternion.Euler(0f, 180f, 0f),
+            Time.deltaTime * 8f);
     }
 
     private void UpdateKeeperDive()
@@ -315,15 +368,52 @@ public sealed class PenaltyGameManager : MonoBehaviour
             return;
         }
 
-        if (Time.time < kickMoment + keeperEasyReactionDelay)
+        float reactionDelay = isHardMode
+            ? Mathf.Lerp(keeperEasyReactionDelay, 0.02f, Mathf.Clamp01(currentDifficulty))
+            : keeperEasyReactionDelay;
+
+        if (Time.time < kickMoment + reactionDelay)
         {
             return;
         }
 
-        float speed = keeperBaseSpeed + currentDifficulty * 0.8f;
-        goalkeeper.position = Vector3.MoveTowards(goalkeeper.position, keeperDiveTarget, speed * Time.deltaTime);
-        float lean = Mathf.Clamp((keeperDiveTarget.x - goalkeeper.position.x) * -20f, -55f, 55f);
-        goalkeeper.rotation = Quaternion.Lerp(goalkeeper.rotation, Quaternion.Euler(0f, 180f, lean), Time.deltaTime * 8f);
+        float distanceToGoal = Mathf.Max(0.1f, GoalLineZ - (ball != null ? ball.position.z : 0f));
+        float ballSpeed = ball != null ? ball.linearVelocity.magnitude : 1f;
+        float timeToGoal = ballSpeed > 0.1f ? distanceToGoal / ballSpeed : 0.5f;
+        float distanceToTarget = Vector3.Distance(goalkeeper.position, keeperDiveTarget);
+        float requiredSpeed = timeToGoal > 0.05f ? distanceToTarget / timeToGoal : 999f;
+
+        float baseSpeed = isHardMode
+            ? keeperBaseSpeed + currentDifficulty * 1.8f
+            : keeperBaseSpeed + currentDifficulty * 0.8f;
+
+        float speed = isHardMode
+            ? Mathf.Max(baseSpeed, requiredSpeed * 0.85f)
+            : Mathf.Min(baseSpeed, requiredSpeed * 0.55f);
+
+        // ✅ Move toward dive target
+        goalkeeper.position = Vector3.MoveTowards(
+            goalkeeper.position,
+            keeperDiveTarget,
+            speed * Time.deltaTime);
+
+        // ✅ Determine dive direction
+        float diveDirection = keeperDiveTarget.x - keeperHome.position.x;
+
+        // ✅ Calculate dive rotation based on direction
+        // Positive X = diving right → rotate Z negative (lean right)
+        // Negative X = diving left  → rotate Z positive (lean left)
+        float zRotation = diveDirection > 0 ? -75f : 75f;
+
+        // ✅ Also tilt forward during dive
+        float xRotation = 25f;
+
+        Quaternion diveRotation = Quaternion.Euler(xRotation, 180f, zRotation);
+
+        goalkeeper.rotation = Quaternion.Lerp(
+            goalkeeper.rotation,
+            diveRotation,
+            Time.deltaTime * 10f); // ✅ fast rotation to look like a dive
     }
 
     private void CheckShotResult()
@@ -338,13 +428,19 @@ public sealed class PenaltyGameManager : MonoBehaviour
         {
             resolvedGoalPoint = goalPoint;
             bool insideGoal = IsInsideGoal(goalPoint);
-            ResolveShot(insideGoal, insideGoal && IsBonusTargetHit(goalPoint) ? "Highlighted target! +2" : insideGoal ? "Goal! +1" : "Missed! -1");
+            ResolveShot(
+                insideGoal,
+                insideGoal && IsBonusTargetHit(goalPoint) ? "Highlighted target! +2" :
+                insideGoal ? "Goal! +1" : "Missed! -1");
             return;
         }
 
         lastBallPosition = currentBallPosition;
 
-        bool expired = currentBallPosition.z > GoalLineZ + 2.5f || currentBallPosition.y < -0.5f || (Time.time >= kickMoment + 0.5f && ball.linearVelocity.magnitude < 0.35f);
+        bool expired = currentBallPosition.z > GoalLineZ + 2.5f
+            || currentBallPosition.y < -0.5f
+            || (Time.time >= kickMoment + 0.5f && ball.linearVelocity.magnitude < 0.35f);
+
         if (expired)
         {
             ResolveShot(false, obstacleTouchedShot ? "Blocked! -1" : "No goal. -1");
@@ -362,7 +458,8 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
         else
         {
-            score = Mathf.Max(0, score - 1);
+            // ✅ Hard mode allows negative scores, Easy mode stops at 0
+            score = isHardMode ? score - 1 : Mathf.Max(0, score - 1);
             PlayClip(saveClip);
             StartCoroutine(LoseAnimation());
         }
@@ -412,7 +509,9 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
         if (goalkeeper != null && keeperHome != null)
         {
-            goalkeeper.SetPositionAndRotation(keeperHome.position, Quaternion.Euler(0f, 180f, 0f));
+            goalkeeper.SetPositionAndRotation(
+                keeperHome.position,
+                Quaternion.Euler(0f, 180f, 0f)); // ✅ back to upright
             goalkeeper.localScale = keeperStartScale;
         }
 
@@ -423,7 +522,6 @@ public sealed class PenaltyGameManager : MonoBehaviour
             player.rotation = Quaternion.identity;
         }
     }
-
     private void PrepareKeeperDiveTarget()
     {
         if (keeperHome == null)
@@ -432,11 +530,45 @@ public sealed class PenaltyGameManager : MonoBehaviour
             return;
         }
 
-        float reactionError = Mathf.Lerp(1.45f, 0.75f, Mathf.Clamp01(currentDifficulty));
-        float targetX = aim.x + Random.Range(-reactionError, reactionError);
-        if (Random.value < 0.18f)
+        float targetX;
+
+        if (isHardMode)
         {
-            targetX *= -0.65f;
+            if (ball != null)
+            {
+                Vector3 ballPos = ball.position;
+                Vector3 ballVel = ball.linearVelocity;
+
+                // ✅ Exact time for ball to reach goal line using Z velocity
+                float distanceZ = GoalLineZ - ballPos.z;
+                float timeToGoal = ballVel.z > 0.01f
+                    ? distanceZ / ballVel.z
+                    : 0.3f;
+
+                // ✅ Predict exact X position at goal line
+                // Also accounts for X deceleration using drag approximation
+                float dragFactor = Mathf.Exp(-0.1f * timeToGoal); // approximates physics drag
+                float predictedX = ballPos.x + ballVel.x * timeToGoal * dragFactor;
+
+                // ✅ Tiny error only — nearly perfect prediction in hard mode
+                float reactionError = Mathf.Lerp(0.2f, 0.02f, Mathf.Clamp01(currentDifficulty));
+                targetX = predictedX + Random.Range(-reactionError, reactionError);
+            }
+            else
+            {
+                targetX = aim.x;
+            }
+        }
+        else
+        {
+            // Easy mode unchanged
+            float reactionError = Mathf.Lerp(1.45f, 0.75f, Mathf.Clamp01(currentDifficulty));
+            targetX = aim.x + Random.Range(-reactionError, reactionError);
+
+            if (Random.value < 0.18f)
+            {
+                targetX *= -0.65f;
+            }
         }
 
         keeperDiveTarget = new Vector3(
@@ -455,7 +587,9 @@ public sealed class PenaltyGameManager : MonoBehaviour
         state = MatchState.GameOver;
         hudPanel.SetActive(false);
         gameOverPanel.SetActive(true);
-        gameOverText.text = won ? "You Win!\nPoints: " + score + "\nShots: " + shots : "You Lose\nPoints: " + score + "\nShots: " + shots;
+        gameOverText.text = won
+            ? "You Win!\nPoints: " + score + "\nShots: " + shots
+            : "You Lose\nPoints: " + score + "\nShots: " + shots;
         StopMusic();
         PlayClip(whistleClip);
     }
@@ -466,7 +600,8 @@ public sealed class PenaltyGameManager : MonoBehaviour
         timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(0f, timer));
         if (difficultyText != null)
         {
-            difficultyText.text = "Difficulty: " + Mathf.RoundToInt(Mathf.Clamp01(currentDifficulty) * 100f) + "%";
+            difficultyText.text = "Difficulty: "
+                + Mathf.RoundToInt(Mathf.Clamp01(currentDifficulty) * 100f) + "%";
         }
 
         foreach (MovingObstacle obstacle in obstacles)
@@ -480,12 +615,15 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private static bool IsBonusTargetHit(Vector3 point)
     {
-        return Mathf.Abs(point.x - BonusTargetX) <= BonusTargetHalfSize && Mathf.Abs(point.y - BonusTargetY) <= BonusTargetHalfSize;
+        return Mathf.Abs(point.x - BonusTargetX) <= BonusTargetHalfSize
+            && Mathf.Abs(point.y - BonusTargetY) <= BonusTargetHalfSize;
     }
 
     private static bool IsInsideGoal(Vector3 point)
     {
-        return Mathf.Abs(point.x) <= GoalHalfWidth && point.y >= 0.15f && point.y <= GoalHeight;
+        return Mathf.Abs(point.x) <= GoalHalfWidth
+            && point.y >= 0.15f
+            && point.y <= GoalHeight;
     }
 
     private static bool TryGetGoalLineCrossing(Vector3 from, Vector3 to, out Vector3 crossing)
@@ -519,7 +657,8 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     internal void NotifyShotCollision(Collider other)
     {
-        if (shotResolved || !shotHasBeenKicked || other == null || ball == null || ball.position.z >= GoalLineZ)
+        if (shotResolved || !shotHasBeenKicked || other == null
+            || ball == null || ball.position.z >= GoalLineZ)
         {
             return;
         }
@@ -538,65 +677,106 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private bool IsGoalkeeperCollider(Collider other)
     {
-        return goalkeeper != null && (other.transform == goalkeeper || other.transform.IsChildOf(goalkeeper));
+        return goalkeeper != null
+            && (other.transform == goalkeeper
+            || other.transform.IsChildOf(goalkeeper));
     }
+
+
 
     private void AnimatePlayerReady()
     {
-        if (player == null)
-        {
-            return;
-        }
+        if (player == null) return;
 
+        // ✅ Idle breathing bob
         float bob = Mathf.Sin(Time.time * 4f) * 0.025f;
         player.localScale = playerStartScale + new Vector3(0f, bob, 0f);
+        player.rotation = Quaternion.identity;
     }
+
+    private void AnimatePlayerRunning()
+    {
+        if (player == null) return;
+
+        float speed = Time.time * 12f; // ✅ fast cycle to simulate leg movement
+
+        // ✅ Vertical bounce — simulates weight shifting between legs
+        float bounce = Mathf.Abs(Mathf.Sin(speed)) * 0.04f;
+
+        // ✅ Squash and stretch — body compresses on ground, stretches in air
+        float squashX = 1f + Mathf.Sin(speed * 2f) * 0.03f;
+        float squashY = 1f + bounce * 0.8f;
+        float squashZ = 1f - Mathf.Sin(speed * 2f) * 0.02f;
+
+        player.localScale = new Vector3(
+            playerStartScale.x * squashX,
+            playerStartScale.y * squashY,
+            playerStartScale.z * squashZ);
+
+        // ✅ Side to side sway — simulates shifting weight left/right
+        float sway = Mathf.Sin(speed) * 2.5f;
+
+        // ✅ Forward lean — player leans forward while running
+        float forwardLean = 15f;
+
+        player.rotation = Quaternion.Euler(forwardLean, 0f, sway);
+
+        // ✅ Vertical position bounce
+        Vector3 pos = player.position;
+        pos.y = playerHomePosition.y + bounce;
+        player.position = pos;
+    }
+
+    private void AnimatePlayerKicking()
+    {
+        if (player == null) return;
+
+        // ✅ Lean further forward during kick approach
+        float speed = Time.time * 16f;
+        float bounce = Mathf.Abs(Mathf.Sin(speed)) * 0.06f;
+
+        float squashX = 1f + Mathf.Sin(speed * 2f) * 0.04f;
+        float squashY = 1f + bounce * 1.2f;
+        float squashZ = 1f - Mathf.Sin(speed * 2f) * 0.03f;
+
+        player.localScale = new Vector3(
+            playerStartScale.x * squashX,
+            playerStartScale.y * squashY,
+            playerStartScale.z * squashZ);
+
+        // ✅ More aggressive sway + lean when sprinting to ball
+        float sway = Mathf.Sin(speed) * 4f;
+        float forwardLean = 25f;
+
+        player.rotation = Quaternion.Euler(forwardLean, 0f, sway);
+
+        Vector3 pos = player.position;
+        pos.y = playerHomePosition.y + bounce;
+        player.position = pos;
+    }
+
+
 
     private static Vector2 ReadMoveInput()
     {
         float x = 0f;
         float y = 0f;
 
-        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
-        {
-            x -= 1f;
-        }
-        if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
-        {
-            x += 1f;
-        }
-        if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
-        {
-            y += 1f;
-        }
-        if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
-        {
-            y -= 1f;
-        }
+        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) x -= 1f;
+        if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) x += 1f;
+        if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) y += 1f;
+        if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) y -= 1f;
 
 #if ENABLE_INPUT_SYSTEM
         Keyboard keyboard = Keyboard.current;
         if (keyboard != null)
         {
-            if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed)
-            {
-                x -= 1f;
-            }
-            if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed)
-            {
-                x += 1f;
-            }
-            if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed)
-            {
-                y += 1f;
-            }
-            if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed)
-            {
-                y -= 1f;
-            }
+            if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) x -= 1f;
+            if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) x += 1f;
+            if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) y += 1f;
+            if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) y -= 1f;
         }
 #endif
-
         return Vector2.ClampMagnitude(new Vector2(x, y), 1f);
     }
 
@@ -605,7 +785,9 @@ public sealed class PenaltyGameManager : MonoBehaviour
         bool pressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Space);
 #if ENABLE_INPUT_SYSTEM
         Keyboard keyboard = Keyboard.current;
-        pressed |= keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame);
+        pressed |= keyboard != null
+            && (keyboard.enterKey.wasPressedThisFrame
+            || keyboard.spaceKey.wasPressedThisFrame);
 #endif
         return pressed;
     }
@@ -647,10 +829,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private IEnumerator KickAnimation()
     {
-        if (player == null)
-        {
-            yield break;
-        }
+        if (player == null) yield break;
 
         float t = 0f;
         Quaternion start = player.rotation;
@@ -677,10 +856,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private IEnumerator CelebrationAnimation()
     {
-        if (player == null)
-        {
-            yield break;
-        }
+        if (player == null) yield break;
 
         for (int i = 0; i < 3; i++)
         {
@@ -693,10 +869,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private IEnumerator LoseAnimation()
     {
-        if (player == null)
-        {
-            yield break;
-        }
+        if (player == null) yield break;
 
         Quaternion start = player.rotation;
         Quaternion down = Quaternion.Euler(0f, 0f, -10f);
@@ -722,10 +895,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private void PlayMusic()
     {
-        if (musicSource == null || musicClip == null)
-        {
-            return;
-        }
+        if (musicSource == null || musicClip == null) return;
 
         musicSource.clip = musicClip;
         musicSource.loop = true;
@@ -738,10 +908,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private void StopMusic()
     {
-        if (musicSource != null)
-        {
-            musicSource.Stop();
-        }
+        if (musicSource != null) musicSource.Stop();
     }
 
     private static AudioClip CreateTone(string clipName, float frequency, float length, float volume)

@@ -7,8 +7,11 @@ EditorBuildSettings:
   m_Scenes:
   - enabled: 1
     path: Assets/Scenes/StartMenu.unity
-    guid: 00000000000000000000000000000000
+    guid: 4be8c85e7d515544ca2f7959ad3d7556
   - enabled: 1
     path: Assets/Scenes/Levels/EasyPenaltyShootout.unity
     guid: ce062d93d3f54d842bea5aba246c9f93
+  - enabled: 1
+    path: Assets/Scenes/Levels/HardPenaltyShootout.unity
+    guid: 4c130a5384ec37a47bb8b01ad5e0ec72
   m_configObjects: {}
