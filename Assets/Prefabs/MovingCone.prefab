@@ -156,5 +156,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingObstacle
   range: 1.2
-  baseSpeed: 0.75
+  baseSpeed: 1.05
   axis: {x: 1, y: 0, z: 0}

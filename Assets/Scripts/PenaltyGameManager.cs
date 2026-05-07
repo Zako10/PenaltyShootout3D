@@ -56,9 +56,9 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     [Header("Hard Level Overrides")]
     [SerializeField] private float hardShotPower = 24f;
-    [SerializeField] private float hardKeeperBaseSpeed = 3.5f;
-    [SerializeField] private float hardKeeperReactionDelay = 0.10f;
-    [SerializeField] private float hardDifficultyRampPerSecond = 0.05f;
+    [SerializeField] private float hardKeeperBaseSpeed = 7.4f;
+    [SerializeField] private float hardKeeperReactionDelay = 0.06f;
+    [SerializeField] private float hardDifficultyRampPerSecond = 0.07f;
 
     private bool isHardMode = false;
     [SerializeField] private string startMenu = "StartMenu";
@@ -84,7 +84,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
     private const float GoalHalfWidth = 2.25f;
     private const float GoalHeight = 2.35f;
     private const float PlayerHalfRange = 2.05f;
-    private const int WinningScore = 5;
+    private const int WinningScore = 10;
     private const float BonusTargetX = 1.45f;
     private const float BonusTargetY = 1.7f;
     private const float BonusTargetHalfSize = 0.325f;
@@ -189,9 +189,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         hudPanel.SetActive(true);
         gameOverPanel.SetActive(false);
 
-        messageText.text = isHardMode
-            ? "Reach 5 points. Score can go negative! Normal goal +1, highlighted target +2, miss -1."
-            : "Reach 5 points. Normal goal +1, highlighted target +2, miss -1.";
+        messageText.text = "Reach 10 points. Normal goal +1, highlighted target +2, miss -1.";
 
         PlayMusic();
         PlayClip(whistleClip);
@@ -353,8 +351,12 @@ public sealed class PenaltyGameManager : MonoBehaviour
             return;
         }
 
-        float patrolRange = Mathf.Lerp(0.55f, 1.4f, Mathf.Clamp01(currentDifficulty));
-        float patrolSpeed = 1.1f + currentDifficulty * 0.9f;
+        float patrolRange = isHardMode
+            ? Mathf.Lerp(0.9f, 1.85f, Mathf.Clamp01(currentDifficulty))
+            : Mathf.Lerp(0.55f, 1.4f, Mathf.Clamp01(currentDifficulty));
+        float patrolSpeed = isHardMode
+            ? 1.45f + currentDifficulty * 1.35f
+            : 1.1f + currentDifficulty * 0.9f;
         Vector3 target = keeperHome.position
             + Vector3.right * Mathf.Sin(Time.time * patrolSpeed) * patrolRange;
         goalkeeper.position = Vector3.MoveTowards(
@@ -375,7 +377,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
 
         float reactionDelay = isHardMode
-            ? Mathf.Lerp(keeperEasyReactionDelay, 0.02f, Mathf.Clamp01(currentDifficulty))
+            ? Mathf.Lerp(keeperEasyReactionDelay, 0.005f, Mathf.Clamp01(currentDifficulty))
             : keeperEasyReactionDelay;
 
         if (Time.time < kickMoment + reactionDelay)
@@ -390,11 +392,11 @@ public sealed class PenaltyGameManager : MonoBehaviour
         float requiredSpeed = timeToGoal > 0.05f ? distanceToTarget / timeToGoal : 999f;
 
         float baseSpeed = isHardMode
-            ? keeperBaseSpeed + currentDifficulty * 1.8f
+            ? keeperBaseSpeed + currentDifficulty * 2.4f
             : keeperBaseSpeed + currentDifficulty * 0.8f;
 
         float speed = isHardMode
-            ? Mathf.Max(baseSpeed, requiredSpeed * 0.85f)
+            ? Mathf.Max(baseSpeed, requiredSpeed * 0.95f)
             : Mathf.Min(baseSpeed, requiredSpeed * 0.55f);
 
         goalkeeper.position = Vector3.MoveTowards(
@@ -548,7 +550,10 @@ public sealed class PenaltyGameManager : MonoBehaviour
                 float dragFactor = Mathf.Exp(-0.1f * timeToGoal); 
                 float predictedX = ballPos.x + ballVel.x * timeToGoal * dragFactor;
 
-                float reactionError = Mathf.Lerp(0.1f, 0.01f, Mathf.Clamp01(currentDifficulty));
+                float anticipation = Mathf.Lerp(0.35f, 0.75f, Mathf.Clamp01(currentDifficulty));
+                predictedX = Mathf.Lerp(predictedX, aim.x, anticipation);
+
+                float reactionError = Mathf.Lerp(0.04f, 0.005f, Mathf.Clamp01(currentDifficulty));
                 targetX = predictedX + Random.Range(-reactionError, reactionError);
             }
             else

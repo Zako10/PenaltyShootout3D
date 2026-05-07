@@ -462,11 +462,11 @@ public static class EasyLevelSceneBuilder
 
         GameObject mainMenu = CreatePanel("Main Menu", canvasObject.transform, new Color(0.02f, 0.05f, 0.09f, 0.82f));
         CreateText("Title", "Penalty Shootout Arena", mainMenu.transform, 54, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.68f), new Vector2(760f, 90f));
-        CreateText("Subtitle", "Reach 5 points. Goal +1, highlighted target +2, miss -1.", mainMenu.transform, 28, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.58f), new Vector2(900f, 50f));
+        CreateText("Subtitle", "Reach 10 points. Goal +1, highlighted target +2, miss -1.", mainMenu.transform, 28, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.58f), new Vector2(900f, 50f));
         Button easyButton = CreateButton("Start Easy Button", "Start Easy", mainMenu.transform, new Vector2(0.5f, 0.45f), new Vector2(260f, 66f));
 
         GameObject hud = CreatePanel("HUD", canvasObject.transform, new Color(0f, 0f, 0f, 0f));
-        Text score = CreateHudText("Score Text", "Points: 0 / 5", hud.transform, TextAnchor.MiddleLeft, new Vector2(0.12f, 0.93f), new Vector2(390f, 62f));
+        Text score = CreateHudText("Score Text", "Points: 0 / 10", hud.transform, TextAnchor.MiddleLeft, new Vector2(0.12f, 0.93f), new Vector2(390f, 62f));
         Text timer = CreateHudText("Timer Text", "Time: 60", hud.transform, TextAnchor.MiddleRight, new Vector2(0.88f, 0.93f), new Vector2(300f, 62f));
         Text difficulty = CreateHudText("Difficulty Text", "Difficulty: 0%", hud.transform, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.93f), new Vector2(310f, 54f));
         Text message = CreateText("Message Text", "", hud.transform, 24, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.86f), new Vector2(900f, 48f));

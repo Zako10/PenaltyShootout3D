@@ -220,7 +220,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Reach 5 points. Goal +1, highlighted target +2, miss -1.
+  m_Text: Reach 10 points. Goal +1, highlighted target +2, miss -1.
 --- !u!222 &4689042
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -576,7 +576,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingObstacle
   range: 1.2
-  baseSpeed: 0.75
+  baseSpeed: 1.05
   axis: {x: 1, y: 0, z: 0}
 --- !u!54 &125182728
 Rigidbody:
@@ -1297,9 +1297,9 @@ MonoBehaviour:
   difficultyRampPerSecond: 0.025
   startImmediately: 1
   hardShotPower: 24
-  hardKeeperBaseSpeed: 3.5
-  hardKeeperReactionDelay: 0.1
-  hardDifficultyRampPerSecond: 0.05
+  hardKeeperBaseSpeed: 7.4
+  hardKeeperReactionDelay: 0.06
+  hardDifficultyRampPerSecond: 0.07
   startMenu: StartMenu
 --- !u!82 &508617593
 AudioSource:
@@ -2141,7 +2141,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingObstacle
   range: 1.2
-  baseSpeed: 0.75
+  baseSpeed: 1.05
   axis: {x: 1, y: 0, z: 0}
 --- !u!54 &1024749186
 Rigidbody:
@@ -3284,7 +3284,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 'Points: 0 / 5'
+  m_Text: 'Points: 0 / 10'
 --- !u!222 &1907748680
 CanvasRenderer:
   m_ObjectHideFlags: 0

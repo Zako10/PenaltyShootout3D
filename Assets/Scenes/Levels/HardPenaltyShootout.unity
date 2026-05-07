@@ -816,9 +816,9 @@ MonoBehaviour:
   difficultyRampPerSecond: 0.025
   startImmediately: 1
   hardShotPower: 24
-  hardKeeperBaseSpeed: 6.5
-  hardKeeperReactionDelay: 0.1
-  hardDifficultyRampPerSecond: 0.05
+  hardKeeperBaseSpeed: 7.4
+  hardKeeperReactionDelay: 0.06
+  hardDifficultyRampPerSecond: 0.07
   startMenu: StartMenu
 --- !u!82 &370260977
 AudioSource:
@@ -2028,9 +2028,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingObstacleGroup
   range: 1.2
-  baseSpeed: 0.75
-  maxAdditionalSpeed: 1.5
-  difficultyIncreaseRate: 0.01
+  baseSpeed: 1.65
+  maxAdditionalSpeed: 2.2
+  difficultyIncreaseRate: 0.015
 --- !u!1 &1186978122
 GameObject:
   m_ObjectHideFlags: 0
@@ -2187,9 +2187,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingObstacleGroup
   range: 1.2
-  baseSpeed: 0.75
-  maxAdditionalSpeed: 1.5
-  difficultyIncreaseRate: 0.01
+  baseSpeed: 1.65
+  maxAdditionalSpeed: 2.2
+  difficultyIncreaseRate: 0.015
 --- !u!1 &1201583656
 GameObject:
   m_ObjectHideFlags: 0
@@ -2565,9 +2565,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DifficultObstacleMoving
   range: 1.2
-  baseSpeed: 1.3
-  maxAdditionalSpeed: 1.5
-  difficultyIncreaseRate: 0.01
+  baseSpeed: 1.65
+  maxAdditionalSpeed: 2.2
+  difficultyIncreaseRate: 0.015
 --- !u!1 &1602194736
 GameObject:
   m_ObjectHideFlags: 0
@@ -2913,9 +2913,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingObstacleGroup
   range: 1.2
-  baseSpeed: 0.75
-  maxAdditionalSpeed: 1.5
-  difficultyIncreaseRate: 0.01
+  baseSpeed: 1.65
+  maxAdditionalSpeed: 2.2
+  difficultyIncreaseRate: 0.015
 --- !u!1 &1720236156
 GameObject:
   m_ObjectHideFlags: 0
@@ -4052,9 +4052,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingObstacleGroup
   range: 1.2
-  baseSpeed: 0.75
-  maxAdditionalSpeed: 1.5
-  difficultyIncreaseRate: 0.01
+  baseSpeed: 1.65
+  maxAdditionalSpeed: 2.2
+  difficultyIncreaseRate: 0.015
 --- !u!1001 &8954016734215962251
 PrefabInstance:
   m_ObjectHideFlags: 0

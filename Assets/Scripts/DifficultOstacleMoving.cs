@@ -4,12 +4,12 @@ public sealed class MovingObstacleGroup : MonoBehaviour
 {
     [Header("Movement Settings")]
     [SerializeField] private float range = 1.2f;
-    [SerializeField] private float baseSpeed = 1.3f;
-    [SerializeField] private float maxAdditionalSpeed = 1.5f;
+    [SerializeField] private float baseSpeed = 1.65f;
+    [SerializeField] private float maxAdditionalSpeed = 2.2f;
 
     [Header("Difficulty Scaling")]
     [Tooltip("How much difficulty increases per second. 0.01 means 100 seconds to max difficulty.")]
-    [SerializeField] private float difficultyIncreaseRate = 0.01f;
+    [SerializeField] private float difficultyIncreaseRate = 0.015f;
 
     private Vector3 startPosition;
     private float difficulty = 0f;
