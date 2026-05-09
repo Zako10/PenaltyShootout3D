@@ -51,14 +51,20 @@ public sealed class PenaltyGameManager : MonoBehaviour
     [SerializeField] private float playerKickDistance = 0.75f;
     [SerializeField] private float keeperBaseSpeed = 2.2f;
     [SerializeField] private float keeperEasyReactionDelay = 0.28f;
+    [SerializeField, Range(0f, 1f)] private float keeperEasyReadChance = 0.5f;
+    [SerializeField, Range(0f, 1f)] private float keeperEasyMaxReadChance = 0.82f;
     [SerializeField] private float difficultyRampPerSecond = 0.025f;
+    [SerializeField] private int winningScore = 5;
     [SerializeField] private bool startImmediately;
 
     [Header("Hard Level Overrides")]
     [SerializeField] private float hardShotPower = 24f;
     [SerializeField] private float hardKeeperBaseSpeed = 7.4f;
     [SerializeField] private float hardKeeperReactionDelay = 0.06f;
+    [SerializeField, Range(0f, 1f)] private float hardKeeperReadChance = 0.84f;
+    [SerializeField, Range(0f, 1f)] private float hardKeeperMaxReadChance = 0.98f;
     [SerializeField] private float hardDifficultyRampPerSecond = 0.07f;
+    [SerializeField] private int hardWinningScore = 10;
 
     private bool isHardMode = false;
     [SerializeField] private string startMenu = "StartMenu";
@@ -84,10 +90,13 @@ public sealed class PenaltyGameManager : MonoBehaviour
     private const float GoalHalfWidth = 2.25f;
     private const float GoalHeight = 2.35f;
     private const float PlayerHalfRange = 2.05f;
-    private const int WinningScore = 10;
     private const float BonusTargetX = 1.45f;
     private const float BonusTargetY = 1.7f;
     private const float BonusTargetHalfSize = 0.325f;
+    private const float EasyKeeperMaxDiveRange = 1.35f;
+    private const float EasyKeeperMaxDiveTilt = 38f;
+    private const float HardKeeperMaxDiveTilt = 75f;
+    private const string DefaultMusicResourceName = "Penalty Kick Rush";
 
     private void Awake()
     {
@@ -97,6 +106,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         goalClip = goalClip != null ? goalClip : CreateTone("Goal", 660f, 0.22f, 0.45f);
         saveClip = saveClip != null ? saveClip : CreateTone("Save", 220f, 0.16f, 0.45f);
         whistleClip = whistleClip != null ? whistleClip : CreateTone("Whistle", 920f, 0.18f, 0.35f);
+        musicClip = musicClip != null ? musicClip : Resources.Load<AudioClip>(DefaultMusicResourceName);
         musicClip = musicClip != null ? musicClip : CreateMusicLoop();
         keeperStartScale = goalkeeper != null ? goalkeeper.localScale : Vector3.one;
         playerStartScale = player != null ? player.localScale : Vector3.one;
@@ -123,7 +133,10 @@ public sealed class PenaltyGameManager : MonoBehaviour
             baseShotPower = hardShotPower;
             keeperBaseSpeed = hardKeeperBaseSpeed;
             keeperEasyReactionDelay = hardKeeperReactionDelay;
+            keeperEasyReadChance = hardKeeperReadChance;
+            keeperEasyMaxReadChance = hardKeeperMaxReadChance;
             difficultyRampPerSecond = hardDifficultyRampPerSecond;
+            winningScore = hardWinningScore;
         }
     }
 
@@ -155,7 +168,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
         if (timer <= 0f)
         {
-            EndMatch(score >= WinningScore);
+            EndMatch(score >= winningScore);
             return;
         }
 
@@ -189,7 +202,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         hudPanel.SetActive(true);
         gameOverPanel.SetActive(false);
 
-        messageText.text = "Reach 10 points. Normal goal +1, highlighted target +2, miss -1.";
+        messageText.text = "Reach " + winningScore + " points. Normal goal +1, highlighted target +2, miss -1.";
 
         PlayMusic();
         PlayClip(whistleClip);
@@ -406,9 +419,11 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
         float diveDirection = keeperDiveTarget.x - keeperHome.position.x;
 
-        float zRotation = diveDirection > 0 ? -75f : 75f;
-
-        float xRotation = 25f;
+        float maxDiveRange = isHardMode ? GoalHalfWidth : EasyKeeperMaxDiveRange;
+        float maxTilt = isHardMode ? HardKeeperMaxDiveTilt : EasyKeeperMaxDiveTilt;
+        float lateralAmount = Mathf.Clamp(diveDirection / maxDiveRange, -1f, 1f);
+        float zRotation = -lateralAmount * maxTilt;
+        float xRotation = isHardMode ? 25f : 10f;
 
         Quaternion diveRotation = Quaternion.Euler(xRotation, 180f, zRotation);
 
@@ -469,7 +484,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
         messageText.text = message;
         UpdateHud();
 
-        if (score >= WinningScore)
+        if (score >= winningScore)
         {
             EndMatch(true);
             return;
@@ -533,6 +548,9 @@ public sealed class PenaltyGameManager : MonoBehaviour
         }
 
         float targetX;
+        float difficulty = Mathf.Clamp01(currentDifficulty);
+        float readChance = Mathf.Lerp(keeperEasyReadChance, keeperEasyMaxReadChance, difficulty);
+        bool readsShotDirection = Random.value <= readChance;
 
         if (isHardMode)
         {
@@ -550,32 +568,65 @@ public sealed class PenaltyGameManager : MonoBehaviour
                 float dragFactor = Mathf.Exp(-0.1f * timeToGoal); 
                 float predictedX = ballPos.x + ballVel.x * timeToGoal * dragFactor;
 
-                float anticipation = Mathf.Lerp(0.35f, 0.75f, Mathf.Clamp01(currentDifficulty));
+                float anticipation = Mathf.Lerp(0.35f, 0.75f, difficulty);
                 predictedX = Mathf.Lerp(predictedX, aim.x, anticipation);
 
-                float reactionError = Mathf.Lerp(0.04f, 0.005f, Mathf.Clamp01(currentDifficulty));
-                targetX = predictedX + Random.Range(-reactionError, reactionError);
+                targetX = readsShotDirection
+                    ? predictedX + Random.Range(
+                        -Mathf.Lerp(0.04f, 0.005f, difficulty),
+                        Mathf.Lerp(0.04f, 0.005f, difficulty))
+                    : GetWrongSideDiveTarget(GoalHalfWidth);
             }
             else
             {
-                targetX = aim.x;
+                targetX = readsShotDirection ? aim.x : GetWrongSideDiveTarget(GoalHalfWidth);
             }
         }
         else
         {
-            float reactionError = Mathf.Lerp(1.45f, 0.75f, Mathf.Clamp01(currentDifficulty));
-            targetX = aim.x + Random.Range(-reactionError, reactionError);
-
-            if (Random.value < 0.18f)
+            if (readsShotDirection)
             {
-                targetX *= -0.65f;
+                float reactionError = Mathf.Lerp(0.95f, 0.35f, difficulty);
+                targetX = aim.x + Random.Range(-reactionError, reactionError);
             }
+            else
+            {
+                targetX = GetWrongSideDiveTarget(EasyKeeperMaxDiveRange);
+
+                if (Random.value < 0.25f)
+                {
+                    targetX = Mathf.Lerp(targetX, keeperHome.position.x, 0.5f);
+                }
+            }
+
+            targetX = Mathf.Clamp(
+                targetX,
+                keeperHome.position.x - EasyKeeperMaxDiveRange,
+                keeperHome.position.x + EasyKeeperMaxDiveRange);
         }
 
         keeperDiveTarget = new Vector3(
             Mathf.Clamp(targetX, -GoalHalfWidth + 0.25f, GoalHalfWidth - 0.25f),
             keeperHome.position.y,
             keeperHome.position.z);
+    }
+
+    private float GetWrongSideDiveTarget(float maxDiveRange)
+    {
+        if (keeperHome == null)
+        {
+            return 0f;
+        }
+
+        float shotOffset = aim.x - keeperHome.position.x;
+        float shotDirection = Mathf.Sign(shotOffset);
+        if (Mathf.Abs(shotOffset) < 0.01f)
+        {
+            shotDirection = Random.value < 0.5f ? -1f : 1f;
+        }
+
+        float wrongSideDistance = Random.Range(maxDiveRange * 0.45f, maxDiveRange);
+        return keeperHome.position.x - shotDirection * wrongSideDistance;
     }
 
     private static Vector3 Flatten(Vector3 value)
@@ -597,7 +648,7 @@ public sealed class PenaltyGameManager : MonoBehaviour
 
     private void UpdateHud()
     {
-        scoreText.text = "Points: " + score + " / " + WinningScore;
+        scoreText.text = "Points: " + score + " / " + winningScore;
         timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(0f, timer));
         if (difficultyText != null)
         {
